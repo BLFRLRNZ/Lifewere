@@ -36,8 +36,8 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 #pads{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:6px 16px 0}
 .pad{min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--dim);font-size:12px;display:flex;align-items:center;justify-content:center;touch-action:none}
 .pad.on{background:#3a2f0a;border-color:var(--accent);color:var(--accent)}
-#stats{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:8px 16px 2px;font-size:11px;color:var(--dim)}
-#stats b{display:block;color:var(--text);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+#stats{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:8px 16px 2px;font-size:11px;color:var(--dim)}
+#stats b{display:block;color:var(--text);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
 #bar{display:flex;flex-wrap:wrap;gap:8px;padding:6px 16px 12px}
 button{flex:1 1 auto;min-height:40px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px}
 button:active{transform:scale(.98)}
@@ -83,6 +83,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 
 <div id="stats">
   <div>neuroni<b id="sN">0</b></div>
+  <div>stabili<b id="sT">0</b></div>
   <div>sinapsi<b id="sS">0</b></div>
   <div>nati<b id="sB">0</b></div>
   <div>potati<b id="sP">0</b></div>
@@ -109,7 +110,9 @@ const MAX_NEURONS = 10000;        // tetto di sicurezza per il salvataggio (circ
 const MIN_NEURONS = 4;            // non scende mai sotto
 const MAX_SYN = 12;               // sinapsi in uscita per neurone
 const HZ = 20;                    // passi al secondo
-const PRUNE_AFTER = HZ * 60 * 5;  // 5 minuti di vita senza scaricare -> potato
+const YOUNG_PRUNE = HZ * 60 * 2;  // un neurone giovane mai più usato davvero per 2 minuti di vita viene potato
+const STABLE_AFTER = 3;           // usato davvero in 3 occasioni diverse: si stabilizza e resta
+const NEWBORN_GRACE = HZ * 30;    // per 30 secondi un neurone appena nato non può essere sacrificato per fare spazio
 const SAVE_EVERY_MS = 10000;      // salvataggio automatico
 const TRACE_DECAY = 0.88;         // traccia di un impulso: dopo 0,5 s vale ancora un terzo
 const EXPECT_WINDOW = 14;         // passi (0,7 s) per vedere se un annuncio si avvera
@@ -134,7 +137,7 @@ function fresh(){
   return n;
 }
 function makeNeuron(n, w, f, parent, x, y, z){
-  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
+  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, born:n.life, occ:0, stable:false, use:0, kick:0, inTr:false, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
            x, y, z, vx:0, vy:0, vz:0, flash:0, s:0 };
 }
 function randUnit(){ const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i]=Math.random(); return normalize(w); }
@@ -183,19 +186,20 @@ const tbuf = new Float32Array(2048);
 // altezza del suono: l'autocorrelazione trova dopo quanto l'onda si ripete
 function detectPitch(){
   analyser.getFloatTimeDomainData(tbuf);
-  const sr = audioCtx.sampleRate, L = 1024;
-  let e0 = 0; for (let i=0;i<L;i++) e0 += tbuf[i]*tbuf[i];
+  // usa un campione su due: per voci fino a 2000 Hz basta, e costa 4 volte meno
+  const sr = audioCtx.sampleRate / 2, L = 512;
+  let e0 = 0; for (let i=0;i<L;i++){ const a = tbuf[2*i]; e0 += a*a; }
   if (Math.sqrt(e0/L) < 0.01) return [0, 0];
-  const minLag = 2, maxLag = Math.min(1000, Math.ceil(sr/140));     // parte da ritardi minimi per non saltare il primo periodo
+  const minLag = 1, maxLag = Math.min(500, Math.ceil(sr/140));     // parte da ritardi minimi per non saltare il primo periodo
   const r = new Float32Array(maxLag + 2);
   for (let l=minLag; l<=maxLag+1; l++){
-    let s = 0, e1 = 0; for (let i=0;i<L;i++){ const b = tbuf[i+l]; s += tbuf[i]*b; e1 += b*b; }
+    let s = 0, e1 = 0; for (let i=0;i<L;i++){ const b = tbuf[2*(i+l)]; s += tbuf[2*i]*b; e1 += b*b; }
     r[l] = s / Math.sqrt(e0*e1 + 1e-12);
   }
   let l = minLag; while (l < maxLag && r[l] > 0.3) l++;             // supera il primo picco (ritardo zero)
   let best = 0; for (let k=l; k<=maxLag; k++) if (r[k] > best) best = r[k];
   if (best < 0.7) return [0, 0];                                    // suono non intonato (rumore, voce parlata confusa)
-  let k = l; while (k < maxLag && !(r[k] >= 0.9*best && r[k] >= r[k-1] && r[k] >= r[k+1])) k++;
+  let k = Math.max(l, 2); while (k < maxLag && !(r[k] >= 0.9*best && r[k] >= r[k-1] && r[k] >= r[k+1])) k++;
   const a = r[k-1], b = r[k], c = r[k+1], shift = (a - c) / (2*(a - 2*b + c) || 1);
   const f = sr / (k + Math.max(-0.5, Math.min(0.5, shift)));
   return (f >= 140 && f <= 2100) ? [f, best] : [0, 0];
@@ -374,8 +378,12 @@ let flights = [];          // impulsi in viaggio lungo le sinapsi
 let pending = [];          // annunci arrivati: aspettano di vedere se il neurone scarica davvero
 const rings = [];          // effetti visivi: nascite e potature
 
-let stepMs = 0, drawMs = 0;
-function tooBusy(){ return stepMs > 18 || drawMs > 28; }   // su 50 ms per passo, lascia margine
+let stepMs = 0, drawMs = 0, stepRate = 20, Q = 0;
+// la rete è al limite quando il suo calcolo occupa troppo (su 50 ms per passo, lascia margine),
+// oppure quando, anche con la grafica ridotta al minimo, non riesce più a vivere a 20 passi al secondo.
+// Il costo del disegno da solo non ferma mai la crescita: si semplifica la grafica.
+function tooBusy(){ return stepMs > 18 || (Q >= Q_MAX && stepRate < 15); }
+let traced = [];           // neuroni che hanno scaricato da poco (traccia STDP ancora viva)
 function step(){
   const t0 = performance.now();
   stepInner();
@@ -397,6 +405,7 @@ function stepInner(){
   } else { novelty *= 0.95; for (const n of N) n.s = 0; }
 
   for (const n of N){ n.pred *= 0.85; n.tr *= TRACE_DECAY; }
+  traced = traced.filter(m => { const keep = m.tr >= 0.05 && byId.has(m.id); if (!keep) m.inTr = false; return keep; });
   let kept = 0, broken = 0;                      // annunci avverati e traditi in questo passo
 
   // gli impulsi che arrivano a destinazione caricano il neurone bersaglio
@@ -419,10 +428,11 @@ function stepInner(){
 
   const firedNow = [];
   for (const n of N){
+    n.kick = Math.random() < 0.0012 ? 1.2 : 0;     // rari impulsi spontanei: la rete "sogna"
     n.v = n.v*0.8
         + (awake ? Math.max(0, n.s - 0.3)*0.9 : 0)
         + (n === best ? 0.3*bs : 0)
-        + (Math.random() < 0.0012 ? 1.2 : 0);      // rari impulsi spontanei: la rete "sogna"
+        + n.kick;
     n.th = 1 + (n.th - 1)*0.995;
     if (n.v > n.th) firedNow.push(n);
   }
@@ -430,11 +440,13 @@ function stepInner(){
   for (const n of firedNow){
     // gli annunci verso di me si sono avverati: quelle sinapsi avevano ragione
     pending = pending.filter(q => { if (q.to !== n.id) return true; const a = byId.get(q.from); if (a) strengthen(a, n, 0.03); kept += q.w*q.w; return false; });
-    n.v = 0; n.th += 0.15; n.fires++; n.last = net.life; n.lastFire = net.life; n.flash = 1;
+    const real = (n.v - n.kick) > 0.5*n.th;       // scarica per qualcosa di vero (sensi o sinapsi), non solo per un sogno
+    n.v = 0; n.th += 0.15; n.fires++; n.lastFire = net.life; n.flash = 1;
+    if (real) useNeuron(n);
     if (awake){ const lr = n === best ? 0.08 : 0.01; for (let i=0;i<N_IN;i++) n.w[i] += lr*(xn[i]-n.w[i]); normalize(n.w); }
     // STDP: chi ha scaricato poco prima di me (traccia ancora viva) rafforza la sinapsi verso di me
-    for (const m of N){
-      if (m === n || m.tr < 0.05 || m.lastFire === net.life) continue;
+    for (const m of traced){
+      if (m === n || m.lastFire === net.life) continue;
       strengthen(m, n, 0.08 * m.tr);
       weaken(n, m, 0.05 * m.tr);
     }
@@ -444,7 +456,7 @@ function stepInner(){
       if (flights.length < 900) flights.push({ from:n.id, to:t.id, w:s.w, t0:net.life, dur: Math.max(2, Math.round(2 + dist3(n,t)*18)) });
     }
   }
-  for (const n of firedNow) n.tr = 1;
+  for (const n of firedNow){ n.tr = 1; if (!n.inTr){ n.inTr = true; traced.push(n); } }
 
   // ---- voce ----
   selfListen(firedNow);
@@ -484,10 +496,22 @@ function decaySynapses(){
   }
 }
 
+// un neurone viene "usato davvero" quando scarica per i sensi o per le sinapsi.
+// Un nuovo uso dopo almeno 2 secondi di pausa è una nuova occasione; dopo 3 occasioni il neurone si stabilizza.
+function useNeuron(n){
+  if (net.life - n.last > 40) n.occ++;
+  n.use += 1; n.last = net.life;
+  if (!n.stable && n.occ >= STABLE_AFTER){ n.stable = true; rings.push({ x:n.x, y:n.y, z:n.z, t:0, kind:"stable" }); }
+}
 function divide(parent){
-  if (net.neurons.length >= MAX_NEURONS || tooBusy()){      // pieno o affaticato: fa spazio al meno usato
-    let worst = null;
-    for (const n of net.neurons) if (n !== parent && (!worst || n.last < worst.last)) worst = n;
+  if (net.neurons.length >= MAX_NEURONS || tooBusy()){
+    // spazio finito: si sacrifica il meno utile. Prima i giovani non ancora stabili (ma non i neonati), poi gli stabili meno usati
+    let worst = null, ws = Infinity;
+    for (const n of net.neurons){
+      if (n === parent) continue;
+      const score = (n.stable ? 1e4 : 0) + (net.life - n.born < NEWBORN_GRACE ? 1e5 : 0) + n.use + n.last*1e-9;
+      if (score < ws){ ws = score; worst = n; }
+    }
     if (worst) removeNeuron(worst);
   }
   const w = new Float32Array(N_IN);
@@ -506,8 +530,10 @@ function divide(parent){
   rings.push({ x:c.x, y:c.y, z:c.z, t:0, kind:"birth" });
 }
 function prune(){
-  const old = net.neurons.filter(n => net.life - n.last > PRUNE_AFTER).sort((a,b) => a.last - b.last);
-  for (const n of old){ if (net.neurons.length <= MIN_NEURONS) break; removeNeuron(n); }
+  for (const n of net.neurons) n.use *= 0.9998;        // l'utilità passata si dimentica piano (circa un'ora e mezza)
+  // i giovani che non si sono integrati: mai più usati davvero per 2 minuti di vita
+  const failed = net.neurons.filter(n => !n.stable && net.life - n.last > YOUNG_PRUNE).sort((a,b) => a.last - b.last);
+  for (const n of failed){ if (net.neurons.length <= MIN_NEURONS) break; removeNeuron(n); }
 }
 function removeNeuron(n){
   const i = net.neurons.indexOf(n); if (i < 0) return;
@@ -520,53 +546,76 @@ function removeNeuron(n){
 const cv = document.getElementById("net"), ctx = cv.getContext("2d");
 let DPR = 1, yaw = 0.6, pitch = -0.3, camDist = 1.4, autoSpin = true, userZoom = 1;
 const center = { x:0, y:0, z:0 };
-function resize(){ DPR = Math.min(2, devicePixelRatio || 1); cv.width = cv.clientWidth*DPR; cv.height = cv.clientHeight*DPR; }
+function resize(){ DPR = Q === 0 ? Math.min(2, devicePixelRatio || 1) : (Q >= 4 ? 0.6 : 1); cv.width = cv.clientWidth*DPR; cv.height = cv.clientHeight*DPR; }
 addEventListener("resize", resize); resize();
 
+// piccola fisica: i neuroni si respingono, figli e neuroni collegati restano vicini.
+// Con reti grandi ogni fotogramma aggiorna a turno solo una parte dei neuroni.
+let physPhase = 0;
+function spring(a, b, rest, k){
+  const dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, d=Math.sqrt(dx*dx+dy*dy+dz*dz)+1e-6, f=(d-rest)*k/d;
+  a.vx+=dx*f; a.vy+=dy*f; a.vz+=dz*f; b.vx-=dx*f*0.5; b.vy-=dy*f*0.5; b.vz-=dz*f*0.5;
+}
 function physics(N){
-  for (let i=0;i<N.length;i++){
+  const L = N.length, stride = L > 1500 ? 4 : L > 600 ? 2 : 1;
+  physPhase = (physPhase + 1) % stride;
+  for (let i=physPhase; i<L; i+=stride){
     const a = N[i];
-    if (N.length <= 200){
-      for (let j=i+1;j<N.length;j++){
+    if (L <= 200){
+      for (let j=i+1;j<L;j++){
         const b = N[j], dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2 = dx*dx+dy*dy+dz*dz + 1e-4;
         if (d2 < 0.12){ const f = 0.00003/d2; a.vx+=dx*f; a.vy+=dy*f; a.vz+=dz*f; b.vx-=dx*f; b.vy-=dy*f; b.vz-=dz*f; }
       }
     } else {                        // rete grande: ogni neurone si confronta con 24 vicini a caso
-      const k = N.length / 48;
+      const k = L / 48 * stride;
       for (let c=0;c<24;c++){
-        const b = N[(Math.random()*N.length)|0]; if (b === a) continue;
+        const b = N[(Math.random()*L)|0]; if (b === a) continue;
         const dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2 = dx*dx+dy*dy+dz*dz + 1e-4;
         if (d2 < 0.12){ const f = 0.00003*k/d2; a.vx+=dx*f; a.vy+=dy*f; a.vz+=dz*f; }
       }
     }
-    const pull = (b, rest, k) => {
-      const dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, d=Math.hypot(dx,dy,dz)+1e-6, f=(d-rest)*k;
-      a.vx+=dx/d*f; a.vy+=dy/d*f; a.vz+=dz/d*f; b.vx-=dx/d*f*0.5; b.vy-=dy/d*f*0.5; b.vz-=dz/d*f*0.5;
-    };
-    const p = byId.get(a.p); if (p) pull(p, 0.14, 0.008);
-    for (const s of a.syn){ const b = byId.get(s.t); if (b) pull(b, 0.22, 0.002*s.w); }
-    a.vx -= a.x*0.0015; a.vy -= a.y*0.0015; a.vz -= a.z*0.0015;
+    const p = byId.get(a.p); if (p) spring(a, p, 0.14, 0.008*stride);
+    for (const s of a.syn){ const b = byId.get(s.t); if (b) spring(a, b, 0.22, 0.002*s.w*stride); }
+    a.vx -= a.x*0.0015*stride; a.vy -= a.y*0.0015*stride; a.vz -= a.z*0.0015*stride;
   }
   for (const n of N){ n.vx*=0.85; n.vy*=0.85; n.vz*=0.85; n.x+=n.vx; n.y+=n.vy; n.z+=n.vz; }
 }
 
+let cYaw = 1, sYaw = 0, cPit = 1, sPit = 0;      // seno e coseno calcolati una volta per fotogramma
 function project(o, out, W, H){
-  const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
   const ox = o.x - center.x, oy = o.y - center.y, oz = o.z - center.z;
-  const x1 = ox*cyw - oz*syw, z1 = ox*syw + oz*cyw;
-  const y2 = oy*cp - z1*sp, z2 = oy*sp + z1*cp;
+  const x1 = ox*cYaw - oz*sYaw, z1 = ox*sYaw + oz*cYaw;
+  const y2 = oy*cPit - z1*sPit, z2 = oy*sPit + z1*cPit;
   const d = Math.max(0.2, z2 + camDist), s = Math.min(W, H)*0.95 / d;
   out.sx = W/2 + x1*s; out.sy = H*0.54 + y2*s; out.sc = s; out.d = d;
-  out.fog = Math.max(0.3, Math.min(1, (camDist*1.4 - d) / (camDist*0.8)));
 }
 
-function draw(){
+// La grafica si adatta: ogni 2 secondi controlla se la rete riesce a vivere a 20 passi al secondo.
+// Se no, semplifica il disegno (meno pixel, meno sinapsi e impulsi disegnati, meno fotogrammi); se sì per un po', lo arricchisce.
+const Q_FPS = [60, 60, 30, 15, 8, 4], Q_FLIGHTS = [900, 400, 200, 80, 40, 0], Q_SYN = [0, 0, 1, 2, 3, 4], Q_MAX = 5;
+let lastRender = 0, rateLife = 0, rateT = performance.now(), calmSince = performance.now(), upWait = 8000, lastUp = 0;
+function draw(now){
+  requestAnimationFrame(draw);
+  if (now - rateT > 2000){
+    if (running && net.life > rateLife){
+      stepRate = (net.life - rateLife) * 1000 / (now - rateT);
+      if (stepRate < 18.5 && Q < Q_MAX){
+        if (now - lastUp < 6000) upWait = Math.min(60000, upWait*2);   // aveva appena arricchito e non regge: aspetterà di più
+        Q++; resize(); calmSince = now;
+      } else if (stepRate >= 19.3 && Q > 0 && now - calmSince > upWait){ Q--; resize(); calmSince = now; lastUp = now; }
+      else if (stepRate < 19.3) calmSince = now;
+    }
+    rateLife = net.life; rateT = now;
+  }
+  if (now - lastRender < 1000/Q_FPS[Q] - 2) return;
+  lastRender = now;
   const tf = performance.now();
   drawScene();
   drawMs = drawMs*0.95 + (performance.now() - tf)*0.05;
-  requestAnimationFrame(draw);
 }
 let synShown = 0;
+const TAU = 6.2832;
+// Tutto è raggruppato: un solo tratto per ogni colore invece di uno per neurone, così il telefono fa molta meno fatica.
 function drawScene(){
   const N = net.neurons, W = cv.width, H = cv.height;
   physics(N);
@@ -576,78 +625,113 @@ function drawScene(){
     let mx=0, my=0, mz=0; for (const n of N){ mx+=n.x; my+=n.y; mz+=n.z; }
     mx/=N.length; my/=N.length; mz/=N.length;
     center.x += (mx-center.x)*0.05; center.y += (my-center.y)*0.05; center.z += (mz-center.z)*0.05;
-    let R = 0; for (const n of N) R = Math.max(R, Math.hypot(n.x-center.x, n.y-center.y, n.z-center.z));
-    const target = Math.max(0.55, R*2.6 + 0.35) * userZoom;
+    let R2 = 0; for (const n of N){ const dx=n.x-center.x, dy=n.y-center.y, dz=n.z-center.z, d2=dx*dx+dy*dy+dz*dz; if (d2 > R2) R2 = d2; }
+    const target = Math.max(0.55, Math.sqrt(R2)*2.6 + 0.35) * userZoom;
     camDist += (target - camDist)*0.03;
   }
+  cYaw = Math.cos(yaw); sYaw = Math.sin(yaw); cPit = Math.cos(pitch); sPit = Math.sin(pitch);
   for (const n of N) project(n, n, W, H);
 
   ctx.globalCompositeOperation = "source-over";
   ctx.fillStyle = "#07080c"; ctx.fillRect(0,0,W,H);
-  ctx.globalCompositeOperation = "lighter";
+  ctx.globalCompositeOperation = Q <= 1 ? "lighter" : "source-over";
 
-  // sinapsi: raggruppate per intensità per disegnarle in fretta
+  // sinapsi: raggruppate per intensità
   const buckets = [[],[],[],[]];
-  for (const a of N) for (const s of a.syn){ const b = byId.get(s.t); if (b) buckets[Math.min(3, (s.w*4)|0)].push(a, b, s.w); }
-  synShown = buckets.reduce((a, L) => a + L.length/3, 0);
-  for (let k = synShown > 6000 ? 1 : 0; k<4; k++){          // con tante sinapsi mostra solo le più forti
+  synShown = 0;
+  for (const a of N) for (const s of a.syn){ const b = byId.get(s.t); if (b){ buckets[Math.min(3, (s.w*4)|0)].push(a, b); synShown++; } }
+  for (let k = Math.max(Q_SYN[Q], synShown > 6000 ? 1 : 0); k<4; k++){   // con tante sinapsi, o grafica ridotta, solo le più forti
     const L = buckets[k]; if (!L.length) continue;
     ctx.strokeStyle = `rgba(110,150,255,${0.06 + k*0.09})`;
     ctx.lineWidth = (0.6 + k*0.45) * DPR;
     ctx.beginPath();
-    for (let i=0;i<L.length;i+=3){ const a=L[i], b=L[i+1]; ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); }
+    for (let i=0;i<L.length;i+=2){ const a=L[i], b=L[i+1]; ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); }
     ctx.stroke();
   }
   // legami di nascita (genitore -> figlio), tenui
-  ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = DPR; ctx.beginPath();
-  for (const n of N){ const p = byId.get(n.p); if (p){ ctx.moveTo(n.sx,n.sy); ctx.lineTo(p.sx,p.sy); } }
-  ctx.stroke();
+  if (Q <= 2){
+    ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = DPR; ctx.beginPath();
+    for (const n of N){ const p = byId.get(n.p); if (p){ ctx.moveTo(n.sx,n.sy); ctx.lineTo(p.sx,p.sy); } }
+    ctx.stroke();
+  }
 
-  // impulsi in viaggio
+  // impulsi in viaggio: tutti in un unico tratto (più un alone, con la grafica piena)
   const frac = Math.min(1, (performance.now() - lastStepAt) / (1000/HZ));
+  const fr = Math.max(1.2*DPR, Math.min(W, H)*0.012/Math.max(0.6, camDist));
+  ctx.beginPath();
+  let drawn = 0;
+  const halo = Q === 0 ? [] : null;
   for (const f of flights){
+    if (drawn >= Q_FLIGHTS[Q]) break;
     const a = byId.get(f.from), b = byId.get(f.to); if (!a || !b) continue;
     const t = Math.min(1, (net.life + (running ? frac : 0) - f.t0) / f.dur);
-    const px = a.sx + (b.sx - a.sx)*t, py = a.sy + (b.sy - a.sy)*t, sc = a.sc + (b.sc - a.sc)*t;
-    const r = Math.max(1.2*DPR, sc*0.012);
-    ctx.fillStyle = `rgba(255,214,90,${0.35 + 0.65*f.w})`;
-    ctx.beginPath(); ctx.arc(px, py, r, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = `rgba(255,190,60,${0.12*f.w})`;
-    ctx.beginPath(); ctx.arc(px, py, r*3, 0, 6.2832); ctx.fill();
+    const px = a.sx + (b.sx - a.sx)*t, py = a.sy + (b.sy - a.sy)*t;
+    if (Q >= 3) ctx.rect(px - fr, py - fr, 2*fr, 2*fr); else { ctx.moveTo(px + fr, py); ctx.arc(px, py, fr, 0, TAU); }
+    if (halo) halo.push(px, py);
+    drawn++;
+  }
+  ctx.fillStyle = "rgba(255,214,90,0.85)"; ctx.fill();
+  if (halo && halo.length){
+    ctx.beginPath(); for (let i=0;i<halo.length;i+=2){ ctx.moveTo(halo[i] + fr*3, halo[i+1]); ctx.arc(halo[i], halo[i+1], fr*3, 0, TAU); }
+    ctx.fillStyle = "rgba(255,190,60,0.1)"; ctx.fill();
   }
 
-  // neuroni, dal più lontano al più vicino
-  const order = N.slice().sort((a,b) => b.d - a.d);
-  for (const n of order){
-    const r = Math.max(1.5*DPR, n.sc * (0.022 + Math.min(0.025, Math.log2(1+n.fires)*0.003)));
-    const hue = (Math.log2(n.f/110)*120) % 360;
-    if (n.flash > 0.04){
-      const g = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, r*5);
-      g.addColorStop(0, `rgba(255,220,110,${0.7*n.flash})`); g.addColorStop(1, "rgba(255,200,80,0)");
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.sx, n.sy, r*5, 0, 6.2832); ctx.fill();
-    }
-    if (n.pred > 0.15){            // alone azzurro: la rete si aspetta che questo neurone scarichi
-      ctx.strokeStyle = `rgba(110,150,255,${Math.min(0.8, n.pred*0.6)})`; ctx.lineWidth = 1.5*DPR;
-      ctx.beginPath(); ctx.arc(n.sx, n.sy, r*2.2, 0, 6.2832); ctx.stroke();
-    }
+  // neuroni: raggruppati per colore (12 tinte) e per stato (giovane trasparente, stabile pieno)
+  const groups = new Array(24);
+  const flashing = [], expected = [], voiced = [];
+  for (const n of N){
+    n.r = Math.max(1.5*DPR, n.sc * (0.022 + Math.min(0.025, Math.log2(1+n.fires)*0.003)));
+    const hue = (((Math.log2(n.f/110)*120) % 360) + 360) % 360;
+    const g = ((hue/30)|0)*2 + (n.stable ? 1 : 0);
+    (groups[g] || (groups[g] = [])).push(n);
+    if (n.flash > 0.04) flashing.push(n);
+    if (n.pred > 0.15) expected.push(n);
     let mv = 0; for (let k=0;k<N_MOT;k++) if (n.mw[k] > mv) mv = n.mw[k];
-    if (mv > 0.3){                 // anello rosa: questo neurone sa muovere la voce
-      ctx.strokeStyle = `rgba(255,122,200,${Math.min(0.9, mv)})`; ctx.lineWidth = 2*DPR;
-      ctx.beginPath(); ctx.arc(n.sx, n.sy, r*1.5, 0, 6.2832); ctx.stroke();
-    }
-    ctx.fillStyle = `hsla(${hue},55%,${32 + n.flash*40}%,${n.fog})`;
-    ctx.beginPath(); ctx.arc(n.sx, n.sy, r*(1 + n.flash*0.4), 0, 6.2832); ctx.fill();
+    if (mv > 0.3) voiced.push(n);
     n.flash *= 0.9;
   }
+  for (let g=0; g<24; g++){
+    const L = groups[g]; if (!L) continue;
+    ctx.fillStyle = `hsla(${(g>>1)*30+15},55%,36%,${g & 1 ? 0.95 : 0.45})`;
+    ctx.beginPath();
+    for (const n of L){ if (Q >= 3) ctx.rect(n.sx - n.r, n.sy - n.r, 2*n.r, 2*n.r); else { ctx.moveTo(n.sx + n.r, n.sy); ctx.arc(n.sx, n.sy, n.r, 0, TAU); } }
+    ctx.fill();
+  }
+  // alone azzurro: la rete si aspetta che questi neuroni scarichino
+  if (expected.length){
+    ctx.strokeStyle = "rgba(110,150,255,0.55)"; ctx.lineWidth = 1.5*DPR; ctx.beginPath();
+    for (const n of expected){ ctx.moveTo(n.sx + n.r*2.2, n.sy); ctx.arc(n.sx, n.sy, n.r*2.2, 0, TAU); }
+    ctx.stroke();
+  }
+  // anello rosa: questi neuroni sanno muovere la voce
+  if (voiced.length){
+    ctx.strokeStyle = "rgba(255,122,200,0.75)"; ctx.lineWidth = 2*DPR; ctx.beginPath();
+    for (const n of voiced){ ctx.moveTo(n.sx + n.r*1.5, n.sy); ctx.arc(n.sx, n.sy, n.r*1.5, 0, TAU); }
+    ctx.stroke();
+  }
+  // chi sta scaricando si illumina
+  for (const n of flashing){
+    if (Q === 0){
+      const gr = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, n.r*5);
+      gr.addColorStop(0, `rgba(255,220,110,${0.7*n.flash})`); gr.addColorStop(1, "rgba(255,200,80,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(n.sx, n.sy, n.r*5, 0, TAU); ctx.fill();
+    }
+  }
+  if (Q > 0 && flashing.length){
+    ctx.fillStyle = "rgba(255,225,120,0.75)"; ctx.beginPath();
+    for (const n of flashing){ const rr = n.r*1.3; if (Q >= 3) ctx.rect(n.sx - rr, n.sy - rr, 2*rr, 2*rr); else { ctx.moveTo(n.sx + rr, n.sy); ctx.arc(n.sx, n.sy, rr, 0, TAU); } }
+    ctx.fill();
+  }
 
-  // nascite (anello verde che si allarga) e potature (anello rosso che si chiude)
+  // nascite (anello verde che si allarga), stabilizzazioni (bianco) e potature (anello rosso che si chiude)
   for (let i = rings.length-1; i >= 0; i--){
     const g = rings[i]; g.t += 0.025; if (g.t >= 1){ rings.splice(i,1); continue; }
     const o = {}; project(g, o, W, H);
-    const rr = o.sc * (g.kind === "birth" ? 0.02 + g.t*0.12 : 0.12 - g.t*0.1);
-    ctx.strokeStyle = g.kind === "birth" ? `rgba(90,209,160,${1-g.t})` : `rgba(255,110,90,${1-g.t})`;
-    ctx.lineWidth = 2*DPR; ctx.beginPath(); ctx.arc(o.sx, o.sy, Math.max(1, rr), 0, 6.2832); ctx.stroke();
+    const rr = o.sc * (g.kind === "prune" ? 0.12 - g.t*0.1 : 0.02 + g.t*0.12);
+    ctx.strokeStyle = g.kind === "birth" ? `rgba(90,209,160,${1-g.t})` : g.kind === "stable" ? `rgba(255,255,255,${1-g.t})` : `rgba(255,110,90,${1-g.t})`;
+    ctx.lineWidth = 2*DPR; ctx.beginPath(); ctx.arc(o.sx, o.sy, Math.max(1, rr), 0, TAU); ctx.stroke();
   }
+  if (rings.length > 60) rings.splice(0, rings.length - 60);
 }
 requestAnimationFrame(draw);
 
@@ -691,6 +775,9 @@ function updateStats(){
   // giallo: il telefono è al limite, i nuovi neuroni sostituiscono i meno usati
   $("sN").style.color = tooBusy() ? "var(--accent)" : "";
   $("sS").textContent = synCount(); $("sB").textContent = net.births;
+  $("sT").textContent = net.neurons.reduce((a, n) => a + (n.stable ? 1 : 0), 0);
+  const help = "trascina per ruotare · due dita per lo zoom" + (Q > 0 ? " · grafica semplificata" : "") + (tooBusy() ? " · rete al limite del telefono" : "");
+  if ($("help").textContent !== help) $("help").textContent = help;
   $("sP").textContent = net.prunes; $("sL").textContent = fmtLife(net.life);
   const a = Math.round(novelty*100), b = Math.round(betrayal*100);
   $("novV").textContent = a + "%"; $("novB").style.width = a + "%";
@@ -708,7 +795,7 @@ function serialize(){
     voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2) },
     neurons: net.neurons.map(n => {
       const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
-      return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
+      return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
                w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
     }) });
 }
@@ -728,7 +815,8 @@ function deserialize(text){
     else throw new Error("file non valido");
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
-    n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
+    // i neuroni salvati prima di questa versione non avevano la stabilità: li considera stabili ma senza utilità accumulata
+    n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, born: s.b ?? (d.life|0), occ: s.o ?? STABLE_AFTER, stable: s.st === undefined ? true : !!s.st, use: s.u ?? 0, kick:0, inTr:false, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
       mw: (ms && ms.length === N_MOT) ? Float32Array.from(ms, v => v/255) : Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
       syn: Array.isArray(s.s) ? s.s.slice(0, MAX_SYN).map(([t,v]) => ({ t, w:v/255 })) : [],
       x:s.x||0, y:s.y||0, z: s.z ?? (Math.random()-0.5)*0.3, vx:0, vy:0, vz:0, flash:0, s:0 });
@@ -754,7 +842,7 @@ async function save(){
   setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${kb} KB`);
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ net = n; flights = []; pending = []; ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ net = n; flights = []; pending = []; traced = []; ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
