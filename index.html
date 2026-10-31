@@ -457,6 +457,7 @@ function stepInner(){
     }
   }
   for (const n of firedNow){ n.tr = 1; if (!n.inTr){ n.inTr = true; traced.push(n); } }
+  if (firedNow.length) lastActLife = net.life;
 
   // ---- voce ----
   selfListen(firedNow);
@@ -501,7 +502,7 @@ function decaySynapses(){
 function useNeuron(n){
   if (net.life - n.last > 40) n.occ++;
   n.use += 1; n.last = net.life;
-  if (!n.stable && n.occ >= STABLE_AFTER){ n.stable = true; rings.push({ x:n.x, y:n.y, z:n.z, t:0, kind:"stable" }); }
+  if (!n.stable && n.occ >= STABLE_AFTER){ n.stable = true; rings.push({ x:n.x, y:n.y, z:n.z, t:0, kind:"stable" }); staticDirty = true; }
 }
 function divide(parent){
   if (net.neurons.length >= MAX_NEURONS || tooBusy()){
@@ -527,6 +528,7 @@ function divide(parent){
   c.syn.push({ t:parent.id, w:0.3 });
   strengthen(parent, c, 0.3);
   net.neurons.push(c); byId.set(c.id, c); net.births++;
+  settle = Math.min(150, settle + 60); staticDirty = true;   // nasce un neurone: la rete si sistema per fargli spazio
   rings.push({ x:c.x, y:c.y, z:c.z, t:0, kind:"birth" });
 }
 function prune(){
@@ -537,20 +539,30 @@ function prune(){
 }
 function removeNeuron(n){
   const i = net.neurons.indexOf(n); if (i < 0) return;
-  net.neurons.splice(i, 1); byId.delete(n.id); net.prunes++;
+  net.neurons.splice(i, 1); byId.delete(n.id); net.prunes++; staticDirty = true;
   for (const m of net.neurons){ if (m.p === n.id) m.p = n.p; m.syn = m.syn.filter(s => s.t !== n.id); }
   rings.push({ x:n.x, y:n.y, z:n.z, t:0, kind:"prune" });
 }
 
-// ======================= disegno 3D =======================
+// ======================= disegno 3D: la rete sta ferma, si accende solo ciò che lavora =======================
+// La rete viene disegnata una volta in un "fondale": neuroni trasparenti e sinapsi appena visibili.
+// Il fondale si ridisegna solo quando la rete cambia (nasce, muore o si stabilizza un neurone), quando giri la vista,
+// o ogni pochi secondi. A ogni fotogramma sopra il fondale si disegnano solo le cose accese:
+// le sinapsi su cui sta passando un impulso e i neuroni che hanno appena scaricato.
+// La rete si sposta solo quando nasce un neurone, per fargli spazio, e poi si ferma di nuovo.
 const cv = document.getElementById("net"), ctx = cv.getContext("2d");
-let DPR = 1, yaw = 0.6, pitch = -0.3, camDist = 1.4, autoSpin = true, userZoom = 1;
+const bg = document.createElement("canvas"), bctx = bg.getContext("2d");
+let DPR = 1, yaw = 0.6, pitch = -0.35, camDist = 1.4, userZoom = 1, staticDirty = true, lastStatic = 0, settle = 120, lastActLife = -99;
 const center = { x:0, y:0, z:0 };
-function resize(){ DPR = Q === 0 ? Math.min(2, devicePixelRatio || 1) : (Q >= 4 ? 0.6 : 1); cv.width = cv.clientWidth*DPR; cv.height = cv.clientHeight*DPR; }
+function resize(){
+  DPR = Q === 0 ? Math.min(2, devicePixelRatio || 1) : (Q >= 4 ? 0.6 : 1);
+  cv.width = bg.width = Math.max(1, cv.clientWidth*DPR); cv.height = bg.height = Math.max(1, cv.clientHeight*DPR);
+  staticDirty = true;
+}
 addEventListener("resize", resize); resize();
 
-// piccola fisica: i neuroni si respingono, figli e neuroni collegati restano vicini.
-// Con reti grandi ogni fotogramma aggiorna a turno solo una parte dei neuroni.
+// piccola fisica, usata solo per sistemare la rete quando nasce un neurone:
+// i neuroni si respingono, figli e neuroni collegati restano vicini.
 let physPhase = 0;
 function spring(a, b, rest, k){
   const dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, d=Math.sqrt(dx*dx+dy*dy+dz*dz)+1e-6, f=(d-rest)*k/d;
@@ -580,8 +592,17 @@ function physics(N){
   }
   for (const n of N){ n.vx*=0.85; n.vy*=0.85; n.vz*=0.85; n.x+=n.vx; n.y+=n.vy; n.z+=n.vz; }
 }
+// inquadratura: centra la rete e la fa stare tutta nello schermo
+function fitCamera(k){
+  const N = net.neurons; if (!N.length) return;
+  let mx=0, my=0, mz=0; for (const n of N){ mx+=n.x; my+=n.y; mz+=n.z; }
+  mx/=N.length; my/=N.length; mz/=N.length;
+  center.x += (mx-center.x)*k; center.y += (my-center.y)*k; center.z += (mz-center.z)*k;
+  let R2 = 0; for (const n of N){ const dx=n.x-center.x, dy=n.y-center.y, dz=n.z-center.z, d2=dx*dx+dy*dy+dz*dz; if (d2 > R2) R2 = d2; }
+  camDist += (Math.max(0.55, Math.sqrt(R2)*2.6 + 0.35)*userZoom - camDist)*k;
+}
 
-let cYaw = 1, sYaw = 0, cPit = 1, sPit = 0;      // seno e coseno calcolati una volta per fotogramma
+let cYaw = 1, sYaw = 0, cPit = 1, sPit = 0;      // seno e coseno della vista, calcolati una volta per disegno
 function project(o, out, W, H){
   const ox = o.x - center.x, oy = o.y - center.y, oz = o.z - center.z;
   const x1 = ox*cYaw - oz*sYaw, z1 = ox*sYaw + oz*cYaw;
@@ -591,8 +612,8 @@ function project(o, out, W, H){
 }
 
 // La grafica si adatta: ogni 2 secondi controlla se la rete riesce a vivere a 20 passi al secondo.
-// Se no, semplifica il disegno (meno pixel, meno sinapsi e impulsi disegnati, meno fotogrammi); se sì per un po', lo arricchisce.
-const Q_FPS = [60, 60, 30, 15, 8, 4], Q_FLIGHTS = [900, 400, 200, 80, 40, 0], Q_SYN = [0, 0, 1, 2, 3, 4], Q_MAX = 5;
+// Se no, semplifica il disegno (meno pixel, meno sinapsi accese, meno fotogrammi); se sì per un po', lo arricchisce.
+const Q_FPS = [60, 60, 30, 15, 8, 4], Q_FLIGHTS = [900, 400, 200, 80, 40, 15], Q_SYN = [0, 0, 1, 2, 3, 4], Q_MAX = 5;
 let lastRender = 0, rateLife = 0, rateT = performance.now(), calmSince = performance.now(), upWait = 8000, lastUp = 0;
 function draw(now){
   requestAnimationFrame(draw);
@@ -608,146 +629,128 @@ function draw(now){
     rateLife = net.life; rateT = now;
   }
   if (now - lastRender < 1000/Q_FPS[Q] - 2) return;
+  // se non sta succedendo niente lo schermo resta com'è: niente da ridisegnare
+  const quiet = !staticDirty && settle === 0 && !rings.length && !flights.length && net.life - lastActLife > 8 && now - lastStatic < 20000;
+  if (quiet) return;
   lastRender = now;
   const tf = performance.now();
-  drawScene();
+  drawScene(now);
   drawMs = drawMs*0.95 + (performance.now() - tf)*0.05;
 }
+requestAnimationFrame(draw);
+
 let synShown = 0;
 const TAU = 6.2832;
-// Tutto è raggruppato: un solo tratto per ogni colore invece di uno per neurone, così il telefono fa molta meno fatica.
-function drawScene(){
-  const N = net.neurons, W = cv.width, H = cv.height;
-  physics(N);
-  if (autoSpin) yaw += 0.0025;
-  // inquadratura automatica: segue la rete mentre cresce
-  if (N.length){
-    let mx=0, my=0, mz=0; for (const n of N){ mx+=n.x; my+=n.y; mz+=n.z; }
-    mx/=N.length; my/=N.length; mz/=N.length;
-    center.x += (mx-center.x)*0.05; center.y += (my-center.y)*0.05; center.z += (mz-center.z)*0.05;
-    let R2 = 0; for (const n of N){ const dx=n.x-center.x, dy=n.y-center.y, dz=n.z-center.z, d2=dx*dx+dy*dy+dz*dz; if (d2 > R2) R2 = d2; }
-    const target = Math.max(0.55, Math.sqrt(R2)*2.6 + 0.35) * userZoom;
-    camDist += (target - camDist)*0.03;
-  }
+function hueOf(n){ return (((Math.log2(n.f/110)*120) % 360) + 360) % 360; }
+
+// il fondale: la rete a riposo
+function renderStatic(){
+  const N = net.neurons, W = bg.width, H = bg.height;
   cYaw = Math.cos(yaw); sYaw = Math.sin(yaw); cPit = Math.cos(pitch); sPit = Math.sin(pitch);
-  for (const n of N) project(n, n, W, H);
-
-  ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = "#07080c"; ctx.fillRect(0,0,W,H);
-  ctx.globalCompositeOperation = Q <= 1 ? "lighter" : "source-over";
-
-  // sinapsi: raggruppate per intensità
+  for (const n of N){ project(n, n, W, H); n.r = Math.max(1.5*DPR, n.sc*(0.011 + Math.min(0.013, Math.log2(1+n.fires)*0.0016))); }
+  bctx.globalCompositeOperation = "source-over";
+  bctx.fillStyle = "#07080c"; bctx.fillRect(0,0,W,H);
+  // sinapsi a riposo: appena visibili, un po' di più se sono forti
   const buckets = [[],[],[],[]];
   synShown = 0;
   for (const a of N) for (const s of a.syn){ const b = byId.get(s.t); if (b){ buckets[Math.min(3, (s.w*4)|0)].push(a, b); synShown++; } }
-  for (let k = Math.max(Q_SYN[Q], synShown > 6000 ? 1 : 0); k<4; k++){   // con tante sinapsi, o grafica ridotta, solo le più forti
+  for (let k = Math.max(Math.min(3, Q_SYN[Q]), synShown > 6000 ? 1 : 0); k<4; k++){
     const L = buckets[k]; if (!L.length) continue;
-    ctx.strokeStyle = `rgba(110,150,255,${0.06 + k*0.09})`;
-    ctx.lineWidth = (0.6 + k*0.45) * DPR;
-    ctx.beginPath();
-    for (let i=0;i<L.length;i+=2){ const a=L[i], b=L[i+1]; ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); }
-    ctx.stroke();
+    bctx.strokeStyle = `rgba(110,150,255,${0.05 + k*0.055})`;
+    bctx.lineWidth = (0.5 + k*0.3) * DPR;
+    bctx.beginPath();
+    for (let i=0;i<L.length;i+=2){ const a=L[i], b=L[i+1]; bctx.moveTo(a.sx,a.sy); bctx.lineTo(b.sx,b.sy); }
+    bctx.stroke();
   }
-  // legami di nascita (genitore -> figlio), tenui
-  if (Q <= 2){
-    ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = DPR; ctx.beginPath();
-    for (const n of N){ const p = byId.get(n.p); if (p){ ctx.moveTo(n.sx,n.sy); ctx.lineTo(p.sx,p.sy); } }
-    ctx.stroke();
-  }
-
-  // impulsi in viaggio: tutti in un unico tratto (più un alone, con la grafica piena)
-  const frac = Math.min(1, (performance.now() - lastStepAt) / (1000/HZ));
-  const fr = Math.max(1.2*DPR, Math.min(W, H)*0.012/Math.max(0.6, camDist));
-  ctx.beginPath();
-  let drawn = 0;
-  const halo = Q === 0 ? [] : null;
-  for (const f of flights){
-    if (drawn >= Q_FLIGHTS[Q]) break;
-    const a = byId.get(f.from), b = byId.get(f.to); if (!a || !b) continue;
-    const t = Math.min(1, (net.life + (running ? frac : 0) - f.t0) / f.dur);
-    const px = a.sx + (b.sx - a.sx)*t, py = a.sy + (b.sy - a.sy)*t;
-    if (Q >= 3) ctx.rect(px - fr, py - fr, 2*fr, 2*fr); else { ctx.moveTo(px + fr, py); ctx.arc(px, py, fr, 0, TAU); }
-    if (halo) halo.push(px, py);
-    drawn++;
-  }
-  ctx.fillStyle = "rgba(255,214,90,0.85)"; ctx.fill();
-  if (halo && halo.length){
-    ctx.beginPath(); for (let i=0;i<halo.length;i+=2){ ctx.moveTo(halo[i] + fr*3, halo[i+1]); ctx.arc(halo[i], halo[i+1], fr*3, 0, TAU); }
-    ctx.fillStyle = "rgba(255,190,60,0.1)"; ctx.fill();
-  }
-
-  // neuroni: raggruppati per colore (12 tinte) e per stato (giovane trasparente, stabile pieno)
+  // neuroni a riposo: trasparenti. Il contorno è più visibile per quelli stabili
   const groups = new Array(24);
-  const flashing = [], expected = [], voiced = [];
-  for (const n of N){
-    n.r = Math.max(1.5*DPR, n.sc * (0.022 + Math.min(0.025, Math.log2(1+n.fires)*0.003)));
-    const hue = (((Math.log2(n.f/110)*120) % 360) + 360) % 360;
-    const g = ((hue/30)|0)*2 + (n.stable ? 1 : 0);
-    (groups[g] || (groups[g] = [])).push(n);
-    if (n.flash > 0.04) flashing.push(n);
-    if (n.pred > 0.15) expected.push(n);
-    let mv = 0; for (let k=0;k<N_MOT;k++) if (n.mw[k] > mv) mv = n.mw[k];
-    if (mv > 0.3) voiced.push(n);
-    n.flash *= 0.9;
-  }
+  for (const n of N){ const g = ((hueOf(n)/30)|0)*2 + (n.stable ? 1 : 0); (groups[g] || (groups[g] = [])).push(n); }
   for (let g=0; g<24; g++){
     const L = groups[g]; if (!L) continue;
-    ctx.fillStyle = `hsla(${(g>>1)*30+15},55%,36%,${g & 1 ? 0.95 : 0.45})`;
+    const h = (g>>1)*30 + 15, st = g & 1;
+    bctx.beginPath();
+    for (const n of L){ bctx.moveTo(n.sx + n.r, n.sy); bctx.arc(n.sx, n.sy, n.r, 0, TAU); }
+    bctx.fillStyle = `hsla(${h},55%,50%,${st ? 0.12 : 0.06})`; bctx.fill();
+    bctx.strokeStyle = `hsla(${h},60%,65%,${st ? 0.5 : 0.22})`; bctx.lineWidth = DPR; bctx.stroke();
+  }
+  // anello rosa sottile: neuroni che sanno muovere la voce
+  bctx.beginPath(); let any = false;
+  for (const n of N){ let mv = 0; for (let k=0;k<N_MOT;k++) if (n.mw[k] > mv) mv = n.mw[k];
+    if (mv > 0.3){ bctx.moveTo(n.sx + n.r*1.5, n.sy); bctx.arc(n.sx, n.sy, n.r*1.5, 0, TAU); any = true; } }
+  if (any){ bctx.strokeStyle = "rgba(255,122,200,0.45)"; bctx.lineWidth = DPR; bctx.stroke(); }
+  staticDirty = false; lastStatic = performance.now();
+}
+
+// a ogni fotogramma: il fondale più le cose accese
+function drawScene(now){
+  if (settle > 0){
+    physics(net.neurons); fitCamera(0.15); settle--; staticDirty = true;
+    if (settle === 0) for (const n of net.neurons){ n.vx = n.vy = n.vz = 0; }
+  }
+  if (staticDirty || now - lastStatic > 20000) renderStatic();   // ogni 20 s aggiorna i dettagli lenti (dimensioni, anelli rosa)
+  const W = cv.width, H = cv.height;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(bg, 0, 0);
+  const t = net.life + (running ? Math.min(1, (now - lastStepAt)/(1000/HZ)) : 0);
+
+  // sinapsi accese: quelle su cui sta passando un impulso. Più la sinapsi è forte, più si accende; si spegne quando l'impulso arriva
+  const lit = [[],[],[],[],[]];
+  let count = 0;
+  for (const f of flights){
+    if (count >= Q_FLIGHTS[Q]) break;
+    const a = byId.get(f.from), b = byId.get(f.to); if (!a || !b) continue;
+    const I = f.w * Math.max(0, 1 - (t - f.t0)/(f.dur + 2));
+    if (I < 0.05) continue;
+    lit[Math.min(4, (I*5)|0)].push(a, b); count++;
+  }
+  ctx.globalCompositeOperation = Q <= 1 ? "lighter" : "source-over";
+  for (let k=0;k<5;k++){
+    const L = lit[k]; if (!L.length) continue;
+    ctx.strokeStyle = `rgba(255,214,110,${0.4 + k*0.15})`; ctx.lineWidth = (1.1 + k*0.4)*DPR;
+    ctx.beginPath();
+    for (let i=0;i<L.length;i+=2){ ctx.moveTo(L[i].sx, L[i].sy); ctx.lineTo(L[i+1].sx, L[i+1].sy); }
+    ctx.stroke();
+  }
+  // neuroni al lavoro: si accendono quando scaricano e si spengono in un attimo
+  const on = [[],[],[],[]];
+  for (const n of net.neurons){ const age = t - n.lastFire; if (age >= 0 && age < 6) on[Math.min(3, ((1 - age/6)*4)|0)].push(n); }
+  for (let k=0;k<4;k++){
+    const L = on[k]; if (!L.length) continue;
+    ctx.fillStyle = `rgba(255,230,150,${0.22 + k*0.24})`;
     ctx.beginPath();
     for (const n of L){ if (Q >= 3) ctx.rect(n.sx - n.r, n.sy - n.r, 2*n.r, 2*n.r); else { ctx.moveTo(n.sx + n.r, n.sy); ctx.arc(n.sx, n.sy, n.r, 0, TAU); } }
     ctx.fill();
   }
-  // alone azzurro: la rete si aspetta che questi neuroni scarichino
-  if (expected.length){
-    ctx.strokeStyle = "rgba(110,150,255,0.55)"; ctx.lineWidth = 1.5*DPR; ctx.beginPath();
-    for (const n of expected){ ctx.moveTo(n.sx + n.r*2.2, n.sy); ctx.arc(n.sx, n.sy, n.r*2.2, 0, TAU); }
-    ctx.stroke();
-  }
-  // anello rosa: questi neuroni sanno muovere la voce
-  if (voiced.length){
-    ctx.strokeStyle = "rgba(255,122,200,0.75)"; ctx.lineWidth = 2*DPR; ctx.beginPath();
-    for (const n of voiced){ ctx.moveTo(n.sx + n.r*1.5, n.sy); ctx.arc(n.sx, n.sy, n.r*1.5, 0, TAU); }
-    ctx.stroke();
-  }
-  // chi sta scaricando si illumina
-  for (const n of flashing){
-    if (Q === 0){
-      const gr = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, n.r*5);
-      gr.addColorStop(0, `rgba(255,220,110,${0.7*n.flash})`); gr.addColorStop(1, "rgba(255,200,80,0)");
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(n.sx, n.sy, n.r*5, 0, TAU); ctx.fill();
-    }
-  }
-  if (Q > 0 && flashing.length){
-    ctx.fillStyle = "rgba(255,225,120,0.75)"; ctx.beginPath();
-    for (const n of flashing){ const rr = n.r*1.3; if (Q >= 3) ctx.rect(n.sx - rr, n.sy - rr, 2*rr, 2*rr); else { ctx.moveTo(n.sx + rr, n.sy); ctx.arc(n.sx, n.sy, rr, 0, TAU); } }
-    ctx.fill();
-  }
-
-  // nascite (anello verde che si allarga), stabilizzazioni (bianco) e potature (anello rosso che si chiude)
+  ctx.globalCompositeOperation = "source-over";
+  // contorno azzurro: neuroni che la rete si aspetta di veder scaricare
+  ctx.beginPath(); let anyExp = false;
+  for (const n of net.neurons) if (n.pred > 0.15){ ctx.moveTo(n.sx + n.r*1.9, n.sy); ctx.arc(n.sx, n.sy, n.r*1.9, 0, TAU); anyExp = true; }
+  if (anyExp){ ctx.strokeStyle = "rgba(110,150,255,0.6)"; ctx.lineWidth = 1.2*DPR; ctx.stroke(); }
+  // eventi, senza movimento: nascita (verde), stabilizzazione (bianco), potatura (rosso). Un contorno che svanisce
   for (let i = rings.length-1; i >= 0; i--){
-    const g = rings[i]; g.t += 0.025; if (g.t >= 1){ rings.splice(i,1); continue; }
+    const g = rings[i]; g.t += 0.02; if (g.t >= 1){ rings.splice(i,1); continue; }
     const o = {}; project(g, o, W, H);
-    const rr = o.sc * (g.kind === "prune" ? 0.12 - g.t*0.1 : 0.02 + g.t*0.12);
-    ctx.strokeStyle = g.kind === "birth" ? `rgba(90,209,160,${1-g.t})` : g.kind === "stable" ? `rgba(255,255,255,${1-g.t})` : `rgba(255,110,90,${1-g.t})`;
-    ctx.lineWidth = 2*DPR; ctx.beginPath(); ctx.arc(o.sx, o.sy, Math.max(1, rr), 0, TAU); ctx.stroke();
+    const col = g.kind === "birth" ? "90,209,160" : g.kind === "stable" ? "255,255,255" : "255,110,90";
+    ctx.strokeStyle = `rgba(${col},${(1-g.t)*0.9})`; ctx.lineWidth = 2*DPR;
+    ctx.beginPath(); ctx.arc(o.sx, o.sy, Math.max(3*DPR, o.sc*0.035), 0, TAU); ctx.stroke();
   }
   if (rings.length > 60) rings.splice(0, rings.length - 60);
 }
-requestAnimationFrame(draw);
 
-// rotazione col dito, zoom con due dita
-const ptrs = new Map(); let pinch0 = 0, dist0 = camDist, spinTimer = null;
-cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); autoSpin = false; clearTimeout(spinTimer);
+// la vista resta dove la lasci: un dito la gira, due dita la avvicinano
+const ptrs = new Map(); let pinch0 = 0, dist0 = 1;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if (ptrs.size === 2){ const [a,b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x-b.x, a.y-b.y); dist0 = userZoom; } });
 cv.addEventListener("pointermove", e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
-  if (ptrs.size === 1){ yaw += (e.clientX - p.x)*0.008; pitch = Math.max(-1.4, Math.min(1.4, pitch + (e.clientY - p.y)*0.008)); }
+  if (ptrs.size === 1){ yaw += (e.clientX - p.x)*0.008; pitch = Math.max(-1.4, Math.min(1.4, pitch + (e.clientY - p.y)*0.008)); staticDirty = true; }
   p.x = e.clientX; p.y = e.clientY;
-  if (ptrs.size === 2){ const [a,b] = [...ptrs.values()]; const d = Math.hypot(a.x-b.x, a.y-b.y); if (pinch0 > 0) userZoom = Math.max(0.35, Math.min(4, dist0 * pinch0 / d)); }
+  if (ptrs.size === 2){ const [a,b] = [...ptrs.values()]; const d = Math.hypot(a.x-b.x, a.y-b.y);
+    if (pinch0 > 0){ userZoom = Math.max(0.35, Math.min(4, dist0 * pinch0 / d)); fitCamera(1); staticDirty = true; } }
 });
-const up = e => { ptrs.delete(e.pointerId); if (!ptrs.size) spinTimer = setTimeout(() => autoSpin = true, 4000); };
+const up = e => { ptrs.delete(e.pointerId); };
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-cv.addEventListener("wheel", e => { e.preventDefault(); userZoom = Math.max(0.35, Math.min(4, userZoom * (1 + e.deltaY*0.001))); }, { passive:false });
+cv.addEventListener("wheel", e => { e.preventDefault(); userZoom = Math.max(0.35, Math.min(4, userZoom * (1 + e.deltaY*0.001))); fitCamera(1); staticDirty = true; }, { passive:false });
 
 // tatto: i quattro pulsanti
 for (const pad of document.querySelectorAll(".pad")){
@@ -842,7 +845,7 @@ async function save(){
   setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${kb} KB`);
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ net = n; flights = []; pending = []; traced = []; ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ net = n; flights = []; pending = []; traced = []; settle = 120; staticDirty = true; ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
