@@ -29,7 +29,7 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
 #ears{display:flex;gap:2px;height:20px;align-items:flex-end;margin-top:2px}
 #ears i{flex:1;background:var(--good);min-height:1px;border-radius:1px}
-#mouth{display:flex;gap:2px;height:16px;align-items:flex-end;margin-top:2px}
+#mouth{display:flex;gap:1px;height:16px;align-items:flex-end;margin-top:2px}
 #mouth i{flex:1;background:#ff7ac8;min-height:1px;border-radius:1px;opacity:.55}
 #mouth i.on{opacity:1}
 #help{position:absolute;right:12px;bottom:6px;font-size:11px;color:#ffffff40;pointer-events:none}
@@ -62,7 +62,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
     <div id="meters">
       <div class="meter">novità <span id="novV">0%</span><div class="bar"><i id="novB"></i></div></div>
       <div class="meter">attesa tradita <span id="betV">0%</span><div class="bar"><i id="betB" style="background:#6e96ff"></i></div></div>
-      <div class="meter">udito<div id="ears"></div></div>
+      <div class="meter">udito<span id="earTxt"></span><div id="ears"></div></div>
       <div class="meter">voce · <span id="voiceTxt">in silenzio</span><div id="mouth"></div></div>
     </div>
   </div>
@@ -102,7 +102,8 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const IN_V = 48, IN_A = 16, IN_T = 4, N_IN = IN_V + IN_A + IN_T; // 68 ingressi sensoriali
+const IN_V = 48, IN_A = 16, IN_P = 24, IN_T = 4;  // vista, bande dell'udito, altezza del suono, tatto
+const OFF_A = IN_V, OFF_P = IN_V + IN_A, OFF_T = OFF_P + IN_P, N_IN = OFF_T + IN_T;   // 92 ingressi sensoriali
 const MAX_NEURONS = 10000;        // tetto di sicurezza per il salvataggio (circa 3,5 MB)
 // il limite vero è la fatica: la rete cresce finché il telefono riesce a calcolarla in tempo
 const MIN_NEURONS = 4;            // non scende mai sotto
@@ -112,8 +113,10 @@ const PRUNE_AFTER = HZ * 60 * 5;  // 5 minuti di vita senza scaricare -> potato
 const SAVE_EVERY_MS = 10000;      // salvataggio automatico
 const TRACE_DECAY = 0.88;         // traccia di un impulso: dopo 0,5 s vale ancora un terzo
 const EXPECT_WINDOW = 14;         // passi (0,7 s) per vedere se un annuncio si avvera
-const N_MOT = 12;                 // "muscoli" della voce: 12 note da 200 a 2000 Hz
-const VOICE_F = Array.from({length:N_MOT}, (_, k) => Math.round(200 * Math.pow(10, k/(N_MOT-1))));
+// altezze da 150 a 2000 Hz: le usano sia l'orecchio (24 ingressi) sia la voce (24 neuroni motori)
+const N_MOT = 24;
+const PITCH_F = Array.from({length:N_MOT}, (_, k) => 150 * Math.pow(2000/150, k/(N_MOT-1)));
+const LOG_PF = PITCH_F.map(Math.log2);
 const DB_NAME = "rete-viva", STORE = "rete", KEY = "cervello", LS_KEY = "rete-viva-backup";
 
 // ======================= la rete =======================
@@ -131,7 +134,7 @@ function fresh(){
   return n;
 }
 function makeNeuron(n, w, f, parent, x, y, z){
-  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:new Float32Array(N_MOT),
+  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
            x, y, z, vx:0, vy:0, vz:0, flash:0, s:0 };
 }
 function randUnit(){ const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i]=Math.random(); return normalize(w); }
@@ -174,10 +177,41 @@ function readVision(){
 // udito: 16 bande, con abitudine (conta solo ciò che cambia)
 const earBars = [], earsEl = document.getElementById("ears");
 for (let i=0;i<IN_A;i++){ const b=document.createElement("i"); earsEl.appendChild(b); earBars.push(b); }
+let heardF = 0, heardClar = 0;
+const tbuf = new Float32Array(2048);
+// altezza del suono: l'autocorrelazione trova dopo quanto l'onda si ripete
+function detectPitch(){
+  analyser.getFloatTimeDomainData(tbuf);
+  const sr = audioCtx.sampleRate, L = 1024;
+  let e0 = 0; for (let i=0;i<L;i++) e0 += tbuf[i]*tbuf[i];
+  if (Math.sqrt(e0/L) < 0.01) return [0, 0];
+  const minLag = 2, maxLag = Math.min(1000, Math.ceil(sr/140));     // parte da ritardi minimi per non saltare il primo periodo
+  const r = new Float32Array(maxLag + 2);
+  for (let l=minLag; l<=maxLag+1; l++){
+    let s = 0, e1 = 0; for (let i=0;i<L;i++){ const b = tbuf[i+l]; s += tbuf[i]*b; e1 += b*b; }
+    r[l] = s / Math.sqrt(e0*e1 + 1e-12);
+  }
+  let l = minLag; while (l < maxLag && r[l] > 0.3) l++;             // supera il primo picco (ritardo zero)
+  let best = 0; for (let k=l; k<=maxLag; k++) if (r[k] > best) best = r[k];
+  if (best < 0.7) return [0, 0];                                    // suono non intonato (rumore, voce parlata confusa)
+  let k = l; while (k < maxLag && !(r[k] >= 0.9*best && r[k] >= r[k-1] && r[k] >= r[k+1])) k++;
+  const a = r[k-1], b = r[k], c = r[k+1], shift = (a - c) / (2*(a - 2*b + c) || 1);
+  const f = sr / (k + Math.max(-0.5, Math.min(0.5, shift)));
+  return (f >= 140 && f <= 2100) ? [f, best] : [0, 0];
+}
+// codifica a popolazione: ogni ingresso preferisce un'altezza, i vicini si accendono un po'
+function encodePitch(f, clar){
+  for (let k=0;k<IN_P;k++){
+    if (!f){ x[OFF_P+k] = 0; continue; }
+    const d = Math.log2(f) - LOG_PF[k];
+    x[OFF_P+k] = clar * Math.exp(-d*d / (2*0.12*0.12));
+  }
+}
 function readHearing(){
-  if (!analyser){ for (let i=0;i<IN_A;i++){ x[IN_V+i]=0; earBars[i].style.height="1px"; } return; }
+  if (!analyser){ for (let i=0;i<IN_A;i++){ x[IN_V+i]=0; earBars[i].style.height="1px"; } heardF = 0; heardClar = 0; encodePitch(0,0); return; }
+  [heardF, heardClar] = detectPitch(); encodePitch(heardF, heardClar);
   analyser.getByteFrequencyData(freq);
-  const lo = 2, hi = Math.min(freq.length - 1, 220);
+  const lo = 8, hi = Math.min(freq.length - 1, 880);
   for (let b=0; b<IN_A; b++){
     const a = Math.floor(lo * Math.pow(hi/lo, b/IN_A)), z = Math.max(a+1, Math.floor(lo * Math.pow(hi/lo, (b+1)/IN_A)));
     let s=0; for (let k=a;k<z;k++) s+=freq[k]; const e = s / (z-a) / 255;
@@ -186,11 +220,11 @@ function readHearing(){
     x[IN_V+b] = v; earBars[b].style.height = (1 + v*19) + "px";
   }
 }
-function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i]*0.8; x[IN_V+IN_A+i] = touch[i]; } }
+function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i]*0.8; x[OFF_T+i] = touch[i]; } }
 
 // ogni senso pesa allo stesso modo: 48 pixel di vista non coprono 4 punti di tatto
 function balanceSenses(){
-  for (const [a, b, on] of [[0, IN_V, 0.3], [IN_V, IN_V+IN_A, 0.25], [IN_V+IN_A, N_IN, 0.2]]){
+  for (const [a, b, on] of [[0, IN_V, 0.3], [OFF_A, OFF_P, 0.25], [OFF_P, OFF_T, 0.2], [OFF_T, N_IN, 0.2]]){
     let s = 0; for (let i=a;i<b;i++) s += x[i]*x[i]; s = Math.sqrt(s);
     const k = s > on ? Math.min(1, s) / s : 0;   // attivo: lunghezza fino a 1; troppo debole: zero
     for (let i=a;i<b;i++) x[i] *= k;
@@ -208,22 +242,60 @@ function tone(f){
   o.connect(g).connect(master); o.start(t); o.stop(t+0.18);
 }
 
-// la voce vera: un tentativo alla volta, che la rete poi sente con il microfono
-let voiceOn = true, voiceBusyUntil = 0, lastVoice = -999, selfM = -1, selfFrom = 0, selfUntil = 0;
-const motorDrive = new Float32Array(N_MOT);
-function vocalize(m, kind){
-  selfM = m; selfFrom = net.life; voiceBusyUntil = net.life + 7; selfUntil = net.life + 14; lastVoice = net.life;
-  if (kind === "lallazione") net.babbles++; else net.replies++;
-  $("voiceTxt").textContent = `${kind} · ${VOICE_F[m]} Hz`;
-  for (const n of net.neurons) if (n.mw[m] > 0.4) n.flash = Math.max(n.flash, 0.7);
-  if (!audioCtx) return;
-  const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
-  o.type = "sine"; o.frequency.value = VOICE_F[m];
-  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.25, t+0.02);
-  g.gain.setValueAtTime(0.25, t+0.3); g.gain.linearRampToValueAtTime(0, t+0.36);
-  o.connect(g).connect(master); o.start(t); o.stop(t+0.38);
+// la voce: 24 neuroni motori in fila, dal grave all'acuto, come una corda vocale continua.
+// Si eccitano con i vicini, si inibiscono tutti insieme, si stancano, e hanno un loro rumore spontaneo.
+// Nessuna regola decide quando parlare: un verso nasce quando l'attività si accende da sola o la spinge la rete.
+// L'altezza della voce è la media delle altezze dei neuroni attivi; il volume dipende da quanti sono attivi.
+let voiceOn = true, osc = null, vgain = null;
+const mh = new Float32Array(N_MOT), mr = new Float32Array(N_MOT), mfat = new Float32Array(N_MOT), mIn = new Float32Array(N_MOT);
+const motHist = [];
+let speaking = false, voiceF = 0, voiceAmp = 0, silentSince = 0, lastExternal = -999, voiceKind = "", selfHeard = 0;
+function ensureVoice(){
+  if (!audioCtx || osc) return;
+  osc = audioCtx.createOscillator(); osc.type = "sine"; osc.frequency.value = 300;
+  vgain = audioCtx.createGain(); vgain.gain.value = 0;
+  osc.connect(vgain).connect(master); osc.start();
 }
-function audioShare(n){ let s = 0; for (let i=IN_V;i<IN_V+IN_A;i++) s += n.w[i]*n.w[i]; return s; }
+function voiceStep(firedNow){
+  // la rete spinge i neuroni motori che conosce (meno mentre sta già parlando, per non ripetersi all'infinito)
+  mIn.fill(0);
+  const gIn = speaking ? 0.12 : 0.35;
+  for (const n of firedNow) for (let k=0;k<N_MOT;k++) mIn[k] += n.mw[k]*gIn;
+  let R = 0; for (let k=0;k<N_MOT;k++) R += mr[k];
+  for (let k=0;k<N_MOT;k++){
+    const noise = (Math.random()+Math.random()+Math.random()+Math.random()-2)*0.13;   // rumore spontaneo del neurone
+    mh[k] = 0.85*mh[k] + 0.35*mr[k] + 0.25*((k>0?mr[k-1]:0) + (k<N_MOT-1?mr[k+1]:0)) - 0.12*R + noise + mIn[k] - 0.9*mfat[k];
+  }
+  let S = 0, lf = 0;
+  for (let k=0;k<N_MOT;k++){
+    mr[k] = Math.max(0, Math.min(1, (mh[k] - 0.3)*2.5));
+    mfat[k] = mfat[k]*0.97 + mr[k]*0.03;                                                 // fatica
+    S += mr[k]; lf += mr[k]*LOG_PF[k];
+  }
+  const was = speaking;
+  speaking = voiceOn && running && S > 0.8;
+  if (speaking){ voiceF = Math.pow(2, lf/S); voiceAmp = Math.min(0.28, 0.1 + (S - 0.8)*0.06); } else voiceAmp = 0;
+  if (vgain){
+    const t = audioCtx.currentTime;
+    if (speaking) osc.frequency.setTargetAtTime(voiceF, t, was ? 0.04 : 0.001);
+    vgain.gain.setTargetAtTime(voiceAmp, t, 0.03);
+  }
+  if (speaking && !was){
+    if (net.life - lastExternal < 30){ net.replies++; voiceKind = "risposta"; } else { net.babbles++; voiceKind = "lallazione"; }
+  }
+  if (!speaking && was) silentSince = net.life;
+  motHist.push({ r: Float32Array.from(mr), f: speaking ? voiceF : 0 }); if (motHist.length > 8) motHist.shift();
+  // un suono intonato mentre taccio (e non è l'eco della mia voce appena finita) viene da fuori
+  if (!speaking && net.life - silentSince > 6 && heardF > 0) lastExternal = net.life;
+}
+// riconosco la mia voce? Cerco negli ultimi passi un momento in cui producevo l'altezza che sento ora
+function myOwnVoice(){
+  if (!heardF) return null;
+  let best = null, bd = 0.2;
+  for (const h of motHist) if (h.f > 0){ const d = Math.abs(Math.log2(heardF/h.f)); if (d < bd){ bd = d; best = h; } }
+  return best;
+}
+function audioShare(n){ let s = 0; for (let i=OFF_A;i<OFF_T;i++) s += n.w[i]*n.w[i]; return s; }
 
 // ======================= la vita: un passo =======================
 let surprise = 0, novelty = 0, betrayal = 0, highSurprise = 0, lastBirth = -999, running = false, timer = null, lastStepAt = performance.now();
@@ -305,23 +377,17 @@ function stepInner(){
   for (const n of firedNow) n.tr = 1;
 
   // ---- voce ----
-  const hearingMyself = net.life <= selfUntil;
-  for (let k=0;k<N_MOT;k++) motorDrive[k] *= 0.75;
-  if (hearingMyself){
-    // mi sto ascoltando: i neuroni dell'udito che scaricano adesso imparano "questo suono lo faccio con il muscolo selfM"
-    if (net.life >= selfFrom + 3) for (const n of firedNow){
+  // se sento la mia voce, i neuroni dell'udito che scaricano imparano quale gesto della voce produce quel suono
+  const mine = myOwnVoice();
+  selfHeard = mine ? selfHeard*0.9 + 0.1 : selfHeard*0.9;
+  if (mine){
+    let mx = 0; for (let k=0;k<N_MOT;k++) if (mine.r[k] > mx) mx = mine.r[k];
+    if (mx > 0) for (const n of firedNow){
       if (audioShare(n) < 0.3) continue;
-      for (let k=0;k<N_MOT;k++) n.mw[k] = k === selfM ? n.mw[k] + 0.15*(1 - n.mw[k]) : n.mw[k]*0.97;
+      for (let k=0;k<N_MOT;k++) n.mw[k] += 0.1*(mine.r[k]/mx - n.mw[k]);
     }
-  } else {
-    // non sto parlando: i neuroni che scaricano spingono i muscoli che conoscono
-    for (const n of firedNow) for (let k=0;k<N_MOT;k++) motorDrive[k] += n.mw[k]*0.9;
   }
-  if (voiceOn && running && net.life > voiceBusyUntil && net.life - lastVoice > 20){
-    let km = 0; for (let k=1;k<N_MOT;k++) if (motorDrive[k] > motorDrive[km]) km = k;
-    if (motorDrive[km] > 0.6) { vocalize(km, "risposta"); motorDrive.fill(0); }
-    else if (Math.random() < 0.012) vocalize(Math.floor(Math.random()*N_MOT), "lallazione");
-  }
+  voiceStep(firedNow);
 
   // attesa tradita: quota di aspettative che non si sono avverate
   if (kept + broken > 0.01){ const ev = Math.min(1, (kept + broken)*4); betrayal += (broken/(kept + broken) - betrayal)*0.12*ev; }
@@ -372,7 +438,7 @@ function divide(parent){
   const c = makeNeuron(net, w, f, parent.id, parent.x + j(), parent.y + j(), parent.z + j());
   c.flash = 1;
   c.syn = parent.syn.map(s => ({ t:s.t, w:s.w*0.5 }));
-  for (let k=0;k<N_MOT;k++) c.mw[k] = parent.mw[k]*0.5;   // eredita metà delle connessioni del genitore
+  for (let k=0;k<N_MOT;k++) c.mw[k] = parent.mw[k]*0.5 + Math.random()*0.05;   // eredita metà delle connessioni del genitore
   c.syn.push({ t:parent.id, w:0.3 });
   strengthen(parent, c, 0.3);
   net.neurons.push(c); byId.set(c.id, c); net.births++;
@@ -553,14 +619,16 @@ function fmtLife(t){ const s = Math.floor(t/HZ), h = Math.floor(s/3600), m = Mat
 const mouthBars = [], mouthEl = document.getElementById("mouth");
 for (let k=0;k<N_MOT;k++){ const b = document.createElement("i"); mouthEl.appendChild(b); mouthBars.push(b); }
 function updateStats(){
-  const speaking = net.life <= voiceBusyUntil;
   for (let k=0;k<N_MOT;k++){
-    const on = speaking && k === selfM;
-    mouthBars[k].style.height = (on ? 16 : 1 + Math.min(1, motorDrive[k])*15) + "px";
-    mouthBars[k].classList.toggle("on", on);
+    mouthBars[k].style.height = (1 + mr[k]*15) + "px";
+    mouthBars[k].classList.toggle("on", speaking && mr[k] > 0.2);
   }
+  $("voiceTxt").textContent = speaking ? `${voiceKind} · ${Math.round(voiceF)} Hz` : "in silenzio";
+  $("earTxt").textContent = heardF ? ` · ${Math.round(heardF)} Hz` : "";
   $("sN").textContent = net.neurons.length;
-  $("sN").style.color = tooBusy() ? "var(--accent)" : "";   // giallo: il telefono è al limite, nuovi neuroni sostituiscono i meno usati $("sS").textContent = synCount(); $("sB").textContent = net.births;
+  // giallo: il telefono è al limite, i nuovi neuroni sostituiscono i meno usati
+  $("sN").style.color = tooBusy() ? "var(--accent)" : "";
+  $("sS").textContent = synCount(); $("sB").textContent = net.births;
   $("sP").textContent = net.prunes; $("sL").textContent = fmtLife(net.life);
   const a = Math.round(novelty*100), b = Math.round(betrayal*100);
   $("novV").textContent = a + "%"; $("novB").style.width = a + "%";
@@ -584,10 +652,15 @@ function deserialize(text){
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
   const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, babbles:d.babbles|0, replies:d.replies|0, nextId:d.nextId|0, neurons:[] };
   for (const s of d.neurons.slice(0, MAX_NEURONS)){
-    const q = new Int8Array(unb64(s.w).buffer); if (q.length !== N_IN) throw new Error("file non valido");
-    const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i] = q[i]/127; normalize(w);
+    const q = new Int8Array(unb64(s.w).buffer);
+    const w = new Float32Array(N_IN);
+    if (q.length === N_IN) for (let i=0;i<N_IN;i++) w[i] = q[i]/127;
+    else if (q.length === 68){ for (let i=0;i<64;i++) w[i] = q[i]/127; for (let i=0;i<4;i++) w[OFF_T+i] = q[64+i]/127; }  // rete di prima: senza altezza
+    else throw new Error("file non valido");
+    normalize(w);
+    const ms = s.m ? unb64(s.m) : null;
     n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
-      mw: s.m ? Float32Array.from(unb64(s.m).slice(0, N_MOT), v => v/255) : new Float32Array(N_MOT),
+      mw: (ms && ms.length === N_MOT) ? Float32Array.from(ms, v => v/255) : Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
       syn: Array.isArray(s.s) ? s.s.slice(0, MAX_SYN).map(([t,v]) => ({ t, w:v/255 })) : [],
       x:s.x||0, y:s.y||0, z: s.z ?? (Math.random()-0.5)*0.3, vx:0, vy:0, vz:0, flash:0, s:0 });
   }
@@ -642,13 +715,14 @@ async function startMic(){
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
     const src = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.5;
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.5;
     freq = new Uint8Array(analyser.frequencyBinCount); src.connect(analyser);
   } catch(e) { setState("niente udito: permesso microfono negato"); }
 }
 async function wake(){
   if (running) return;
   if (!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); master = audioCtx.createGain(); master.connect(audioCtx.destination); }
+  ensureVoice();
   try { await audioCtx.resume(); } catch(e) {}
   $("wake").classList.add("hidden");
   await startCamera(); if (!micStream) await startMic();
@@ -660,6 +734,7 @@ async function wake(){
 async function sleep(){
   if (!running) return;
   running = false; clearInterval(timer);
+  speaking = false; if (vgain) vgain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
   if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null;
   if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; analyser = null;
   try { if (wakeLock) await wakeLock.release(); } catch(e) {}

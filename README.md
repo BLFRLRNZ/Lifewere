@@ -9,7 +9,8 @@ Una rete neurale spiking che cresce mentre vive, come web app per il telefono.
 - **Aspettative**: quando un impulso arriva lungo una sinapsi, "annuncia" che quel neurone sta per scaricare. Se entro 0,7 secondi lo fa, la sinapsi si rafforza; se no, si indebolisce e la rete registra un'attesa tradita.
 - **Sorpresa**: nasce sia dalla novità (qualcosa di mai visto) sia dalle attese tradite.
 - **Crescita**: la sorpresa si accumula; quando supera una soglia, il neurone più vicino all'esperienza si divide in due.
-- **Voce**: 12 note da 200 a 2000 Hz. All'inizio fa versi a caso (lallazione), si ascolta col microfono e i neuroni dell'udito imparano quale nota producono. Poi, quando sente una nota da fuori, prova a rifarla.
+- **Udito**: 16 bande di frequenza più un rilevatore dell'altezza esatta del suono (150-2000 Hz), codificata su 24 ingressi che si sovrappongono.
+- **Voce**: 24 neuroni motori in fila dal grave all'acuto comandano un suono continuo: l'altezza è la media dei neuroni attivi, il volume dipende da quanti sono attivi, quindi la voce può scivolare. Nessuna regola decide quando parlare: i versi (lallazione) nascono dal rumore spontaneo dei neuroni motori, che si eccitano con i vicini e si stancano. Quando riconosce la propria voce nel microfono, i neuroni dell'udito imparano quale gesto produce quel suono; poi, quando sente un suono da fuori, prova a rifarlo.
 - **Potatura**: i neuroni che non scaricano per 5 minuti di vita vengono eliminati.
 - **Dimensione**: cresce finché il telefono riesce a calcolarla in tempo (il numero dei neuroni diventa giallo quando è al limite); da lì i nuovi neuroni sostituiscono i meno usati. Tetto di sicurezza: 10.000 neuroni.
 - **Memoria**: si salva da sola sul telefono ogni 10 secondi e quando la chiudi; "Salva file" esporta una copia in `.json`.
