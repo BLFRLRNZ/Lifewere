@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rete Viva</title>
+<meta name="theme-color" content="#07080c">
+<meta name="description" content="Una rete neurale spiking che cresce: vede, sente, percepisce il tatto e impara mentre vive.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{--bg:#07080c;--panel:#12151d;--line:#232a37;--text:#e7ebf2;--dim:#8a94a6;--accent:#ffd34d;--good:#5ad1a0}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 4px}
+h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
+#state{font-size:12px;color:var(--dim);text-align:right}
+#stage{flex:1;min-height:0;position:relative}
+#net{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#hud{position:absolute;left:12px;top:6px;display:flex;gap:10px;align-items:flex-start;pointer-events:none}
+#eyes{width:84px;height:63px;border:1px solid var(--line);border-radius:6px;background:#000;image-rendering:pixelated}
+#meters{display:flex;flex-direction:column;gap:6px;min-width:120px}
+.meter{font-size:11px;color:var(--dim)}
+.bar{height:5px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:2px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+#ears{display:flex;gap:2px;height:20px;align-items:flex-end;margin-top:2px}
+#ears i{flex:1;background:var(--good);min-height:1px;border-radius:1px}
+#help{position:absolute;right:12px;bottom:6px;font-size:11px;color:#ffffff40;pointer-events:none}
+#pads{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:6px 16px 0}
+.pad{min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--dim);font-size:12px;display:flex;align-items:center;justify-content:center;touch-action:none}
+.pad.on{background:#3a2f0a;border-color:var(--accent);color:var(--accent)}
+#stats{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:8px 16px 2px;font-size:11px;color:var(--dim)}
+#stats b{display:block;color:var(--text);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+#bar{display:flex;flex-wrap:wrap;gap:8px;padding:6px 16px 12px}
+button{flex:1 1 auto;min-height:40px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px}
+button:active{transform:scale(.98)}
+button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:650;font-size:15px}
+#wake{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#07080cdd;text-align:center;padding:24px}
+#wake p{max-width:340px;color:var(--dim);margin:0}
+#wake button{flex:0 0 auto;min-width:200px;min-height:48px}
+#wake.hidden{display:none}
+#file{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Rete Viva</h1>
+  <div id="state">non ancora sveglia</div>
+</header>
+
+<div id="stage">
+  <canvas id="net"></canvas>
+  <div id="hud">
+    <canvas id="eyes" width="64" height="48"></canvas>
+    <div id="meters">
+      <div class="meter">sorpresa <span id="surV">0%</span><div class="bar"><i id="surB"></i></div></div>
+      <div class="meter">udito<div id="ears"></div></div>
+    </div>
+  </div>
+  <div id="help">trascina per ruotare · due dita per lo zoom</div>
+  <div id="wake">
+    <p id="wakeMsg">Parte con pochi neuroni. Vede quello che si muove, sente i suoni e sente il tocco dei quattro pulsanti "tatto". Quando qualcosa la sorprende, un neurone si divide per impararlo. I neuroni che scaricano insieme creano sinapsi, quelli inutili vengono potati.</p>
+    <button class="main" id="go">Svegliati</button>
+  </div>
+</div>
+
+<div id="pads">
+  <div class="pad" data-q="0">tatto 1</div>
+  <div class="pad" data-q="1">tatto 2</div>
+  <div class="pad" data-q="2">tatto 3</div>
+  <div class="pad" data-q="3">tatto 4</div>
+</div>
+
+<div id="stats">
+  <div>neuroni<b id="sN">0</b></div>
+  <div>sinapsi<b id="sS">0</b></div>
+  <div>nati<b id="sB">0</b></div>
+  <div>potati<b id="sP">0</b></div>
+  <div>vita<b id="sL">0s</b></div>
+</div>
+
+<div id="bar">
+  <button id="sleep">Dormi</button>
+  <button id="sound">Suono: sì</button>
+  <button id="flip">Gira camera</button>
+  <button id="exp">Salva file</button>
+  <button id="imp">Carica file</button>
+  <button id="reset">Ricomincia</button>
+  <input type="file" id="file" accept=".json,application/json">
+</div>
+
+<script>
+"use strict";
+// ======================= parametri =======================
+const IN_V = 48, IN_A = 16, IN_T = 4, N_IN = IN_V + IN_A + IN_T; // 68 ingressi sensoriali
+const MAX_NEURONS = 300;          // limite di memoria (circa 100 KB salvati al massimo)
+const MIN_NEURONS = 4;            // non scende mai sotto
+const MAX_SYN = 12;               // sinapsi in uscita per neurone
+const HZ = 20;                    // passi al secondo
+const PRUNE_AFTER = HZ * 60 * 5;  // 5 minuti di vita senza scaricare -> potato
+const SAVE_EVERY_MS = 10000;      // salvataggio automatico
+const STDP_WINDOW = 4;            // passi entro cui due impulsi sono "insieme"
+const DB_NAME = "rete-viva", STORE = "rete", KEY = "cervello", LS_KEY = "rete-viva-backup";
+
+// ======================= la rete =======================
+let net = fresh();
+let byId = new Map();
+function reindex(){ byId = new Map(net.neurons.map(n => [n.id, n])); }
+
+function fresh(){
+  const n = { life:0, births:0, prunes:0, nextId:0, neurons:[] };
+  const tones = [220, 277.18, 329.63, 415.3];
+  for (let i = 0; i < MIN_NEURONS; i++){
+    const a = i / MIN_NEURONS * Math.PI * 2;
+    n.neurons.push(makeNeuron(n, randUnit(), tones[i], -1, Math.cos(a)*0.2, (Math.random()-0.5)*0.2, Math.sin(a)*0.2));
+  }
+  return n;
+}
+function makeNeuron(n, w, f, parent, x, y, z){
+  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, lastFire:-99, fires:0, syn:[],
+           x, y, z, vx:0, vy:0, vz:0, flash:0, s:0 };
+}
+function randUnit(){ const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i]=Math.random(); return normalize(w); }
+function normalize(w){ let s=0; for (let i=0;i<w.length;i++) s+=w[i]*w[i]; s=Math.sqrt(s)||1; for (let i=0;i<w.length;i++) w[i]/=s; return w; }
+function dot(a,b){ let s=0; for (let i=0;i<a.length;i++) s+=a[i]*b[i]; return s; }
+function dist3(a,b){ return Math.hypot(a.x-b.x, a.y-b.y, a.z-b.z); }
+function synCount(){ let c=0; for (const n of net.neurons) c += n.syn.length; return c; }
+
+// ======================= sensi =======================
+const x = new Float32Array(N_IN), xn = new Float32Array(N_IN);
+const video = document.createElement("video"); video.playsInline = true; video.muted = true;
+const grab = document.createElement("canvas"); grab.width = 64; grab.height = 48;
+const gctx = grab.getContext("2d", { willReadFrequently:true });
+const eyes = document.getElementById("eyes"), ectx = eyes.getContext("2d");
+const evImg = ectx.createImageData(64, 48);
+let prevGray = null, facing = "environment", camStream = null, micStream = null;
+let audioCtx = null, analyser = null, freq = null, master = null;
+const bandBase = new Float32Array(IN_A), touch = new Float32Array(IN_T), held = [false,false,false,false];
+
+// vista a eventi: conta solo i pixel che cambiano, come una retina
+function readVision(){
+  if (!camStream || video.readyState < 2){ for (let i=0;i<IN_V;i++) x[i]=0; return; }
+  gctx.drawImage(video, 0, 0, 64, 48);
+  const d = gctx.getImageData(0, 0, 64, 48).data;
+  const gray = new Float32Array(64*48), cells = new Float32Array(IN_V), ev = evImg.data;
+  for (let i=0, j=0; i<gray.length; i++, j+=4) gray[i] = d[j]*0.3 + d[j+1]*0.59 + d[j+2]*0.11;
+  for (let i=0; i<gray.length; i++){
+    const diff = prevGray ? gray[i] - prevGray[i] : 0, k = i*4;
+    if (diff > 18){ ev[k]=255; ev[k+1]=211; ev[k+2]=77; }
+    else if (diff < -18){ ev[k]=90; ev[k+1]=160; ev[k+2]=255; }
+    else { ev[k]=ev[k+1]=ev[k+2]=0; }
+    ev[k+3]=255;
+    if (diff > 18 || diff < -18){ const cx = (i % 64) >> 3, cy = (i / 64 | 0) >> 3; cells[cy*8 + cx]++; }
+  }
+  ectx.putImageData(evImg, 0, 0);
+  prevGray = gray;
+  for (let i=0;i<IN_V;i++) x[i] = Math.min(1, cells[i] / 20);
+}
+
+// udito: 16 bande, con abitudine (conta solo ciò che cambia)
+const earBars = [], earsEl = document.getElementById("ears");
+for (let i=0;i<IN_A;i++){ const b=document.createElement("i"); earsEl.appendChild(b); earBars.push(b); }
+function readHearing(){
+  if (!analyser){ for (let i=0;i<IN_A;i++){ x[IN_V+i]=0; earBars[i].style.height="1px"; } return; }
+  analyser.getByteFrequencyData(freq);
+  const lo = 2, hi = Math.min(freq.length - 1, 220);
+  for (let b=0; b<IN_A; b++){
+    const a = Math.floor(lo * Math.pow(hi/lo, b/IN_A)), z = Math.max(a+1, Math.floor(lo * Math.pow(hi/lo, (b+1)/IN_A)));
+    let s=0; for (let k=a;k<z;k++) s+=freq[k]; const e = s / (z-a) / 255;
+    bandBase[b] = bandBase[b]*0.98 + e*0.02;
+    const v = Math.max(0, Math.min(1, (e - bandBase[b]) * 4));
+    x[IN_V+b] = v; earBars[b].style.height = (1 + v*19) + "px";
+  }
+}
+function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i]*0.8; x[IN_V+IN_A+i] = touch[i]; } }
+
+// ======================= voce =======================
+let soundOn = true, tonesThisStep = 0;
+function tone(f){
+  if (!audioCtx || !soundOn || tonesThisStep >= 3) return;
+  tonesThisStep++;
+  const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = "sine"; o.frequency.value = f;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.045, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+0.16);
+  o.connect(g).connect(master); o.start(t); o.stop(t+0.18);
+}
+
+// ======================= la vita: un passo =======================
+let surprise = 0, highSurprise = 0, lastBirth = -999, running = false, timer = null, lastStepAt = performance.now();
+let flights = [];          // impulsi in viaggio lungo le sinapsi
+let recent = [];           // neuroni che hanno scaricato da poco (per la regola STDP)
+const rings = [];          // effetti visivi: nascite e potature
+
+function step(){
+  net.life++; tonesThisStep = 0; lastStepAt = performance.now();
+  readVision(); readHearing(); readTouch();
+  let e = 0; for (let i=0;i<N_IN;i++) e += x[i]*x[i]; e = Math.sqrt(e);
+  const N = net.neurons;
+  let best = null, bs = -1;
+  const awake = e > 0.35;
+  if (awake){
+    for (let i=0;i<N_IN;i++) xn[i] = x[i]/e;
+    for (const n of N){ n.s = dot(n.w, xn); if (n.s > bs){ bs = n.s; best = n; } }
+    surprise = surprise*0.8 + (1 - Math.max(0, bs))*0.2;
+  } else { surprise *= 0.95; for (const n of N) n.s = 0; }
+
+  // gli impulsi che arrivano a destinazione caricano il neurone bersaglio
+  const still = [];
+  for (const f of flights){
+    if (net.life >= f.t0 + f.dur){ const t = byId.get(f.to); if (t) t.v += f.w * 0.55; }
+    else still.push(f);
+  }
+  flights = still;
+  recent = recent.filter(r => net.life - r.t <= STDP_WINDOW && byId.has(r.n.id));
+
+  const firedNow = [];
+  for (const n of N){
+    n.v = n.v*0.8
+        + (awake ? Math.max(0, n.s - 0.3)*0.9 : 0)
+        + (n === best ? 0.3*bs : 0)
+        + (Math.random() < 0.0012 ? 1.2 : 0);      // rari impulsi spontanei: la rete "sogna"
+    n.th = 1 + (n.th - 1)*0.995;
+    if (n.v > n.th) firedNow.push(n);
+  }
+
+  for (const n of firedNow){
+    n.v = 0; n.th += 0.15; n.fires++; n.last = net.life; n.lastFire = net.life; n.flash = 1;
+    if (awake){ const lr = n === best ? 0.08 : 0.01; for (let i=0;i<N_IN;i++) n.w[i] += lr*(xn[i]-n.w[i]); normalize(n.w); }
+    // STDP: chi ha scaricato poco prima di me rafforza la sinapsi verso di me
+    for (const r of recent){
+      if (r.n === n) continue;
+      const k = 1 - (net.life - r.t) / (STDP_WINDOW + 1);
+      strengthen(r.n, n, 0.12 * k);
+      weaken(n, r.n, 0.05 * k);
+    }
+    // l'impulso parte lungo tutte le sinapsi in uscita
+    for (const s of n.syn){
+      const t = byId.get(s.t); if (!t || s.w < 0.05) continue;
+      if (flights.length < 900) flights.push({ from:n.id, to:t.id, w:s.w, t0:net.life, dur: Math.max(2, Math.round(2 + dist3(n,t)*18)) });
+    }
+    tone(n.f);
+  }
+  for (const n of firedNow) recent.push({ n, t:net.life });
+
+  // crescita: la sorpresa che resta alta fa dividere il neurone più vicino all'esperienza nuova
+  if (awake && surprise > 0.4) highSurprise++; else highSurprise = Math.max(0, highSurprise-1);
+  if (highSurprise > 12 && best && net.life - lastBirth > 10){ divide(best); highSurprise = 0; lastBirth = net.life; }
+
+  if (net.life % HZ === 0){ decaySynapses(); prune(); }
+  if (net.life % 4 === 0) updateStats();
+}
+
+function strengthen(a, b, amt){
+  let s = a.syn.find(s => s.t === b.id);
+  if (!s){
+    if (a.syn.length >= MAX_SYN){                     // pieno: sostituisce la sinapsi più debole
+      let weakest = 0; for (let i=1;i<a.syn.length;i++) if (a.syn[i].w < a.syn[weakest].w) weakest = i;
+      if (a.syn[weakest].w > amt) return;
+      a.syn.splice(weakest, 1);
+    }
+    s = { t:b.id, w:0 }; a.syn.push(s);
+  }
+  s.w = Math.min(1, s.w + amt*(1 - s.w));
+}
+function weaken(a, b, amt){ const s = a.syn.find(s => s.t === b.id); if (s) s.w = Math.max(0, s.w - amt); }
+function decaySynapses(){
+  for (const n of net.neurons){
+    for (const s of n.syn) s.w *= 0.997;               // ciò che non si usa si dimentica piano piano
+    n.syn = n.syn.filter(s => s.w > 0.03 && byId.has(s.t));
+  }
+}
+
+function divide(parent){
+  if (net.neurons.length >= MAX_NEURONS){
+    let worst = null;
+    for (const n of net.neurons) if (n !== parent && (!worst || n.last < worst.last)) worst = n;
+    if (worst) removeNeuron(worst);
+  }
+  const w = new Float32Array(N_IN);
+  for (let i=0;i<N_IN;i++) w[i] = 0.5*parent.w[i] + 0.5*xn[i];
+  normalize(w);
+  const semis = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random()*4));
+  let f = parent.f * Math.pow(2, semis/12); if (f < 110) f *= 2; if (f > 1760) f /= 2;
+  const j = () => (Math.random()-0.5)*0.06;
+  const c = makeNeuron(net, w, f, parent.id, parent.x + j(), parent.y + j(), parent.z + j());
+  c.flash = 1;
+  c.syn = parent.syn.map(s => ({ t:s.t, w:s.w*0.5 }));   // eredita metà delle connessioni del genitore
+  c.syn.push({ t:parent.id, w:0.3 });
+  strengthen(parent, c, 0.3);
+  net.neurons.push(c); byId.set(c.id, c); net.births++;
+  rings.push({ x:c.x, y:c.y, z:c.z, t:0, kind:"birth" });
+}
+function prune(){
+  const old = net.neurons.filter(n => net.life - n.last > PRUNE_AFTER).sort((a,b) => a.last - b.last);
+  for (const n of old){ if (net.neurons.length <= MIN_NEURONS) break; removeNeuron(n); }
+}
+function removeNeuron(n){
+  const i = net.neurons.indexOf(n); if (i < 0) return;
+  net.neurons.splice(i, 1); byId.delete(n.id); net.prunes++;
+  for (const m of net.neurons){ if (m.p === n.id) m.p = n.p; m.syn = m.syn.filter(s => s.t !== n.id); }
+  rings.push({ x:n.x, y:n.y, z:n.z, t:0, kind:"prune" });
+}
+
+// ======================= disegno 3D =======================
+const cv = document.getElementById("net"), ctx = cv.getContext("2d");
+let DPR = 1, yaw = 0.6, pitch = -0.3, camDist = 1.4, autoSpin = true, userZoom = 1;
+const center = { x:0, y:0, z:0 };
+function resize(){ DPR = Math.min(2, devicePixelRatio || 1); cv.width = cv.clientWidth*DPR; cv.height = cv.clientHeight*DPR; }
+addEventListener("resize", resize); resize();
+
+function physics(N){
+  for (let i=0;i<N.length;i++){
+    const a = N[i];
+    for (let j=i+1;j<N.length;j++){
+      const b = N[j], dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, d2 = dx*dx+dy*dy+dz*dz + 1e-4;
+      if (d2 < 0.12){ const f = 0.00003/d2; a.vx+=dx*f; a.vy+=dy*f; a.vz+=dz*f; b.vx-=dx*f; b.vy-=dy*f; b.vz-=dz*f; }
+    }
+    const pull = (b, rest, k) => {
+      const dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, d=Math.hypot(dx,dy,dz)+1e-6, f=(d-rest)*k;
+      a.vx+=dx/d*f; a.vy+=dy/d*f; a.vz+=dz/d*f; b.vx-=dx/d*f*0.5; b.vy-=dy/d*f*0.5; b.vz-=dz/d*f*0.5;
+    };
+    const p = byId.get(a.p); if (p) pull(p, 0.14, 0.008);
+    for (const s of a.syn){ const b = byId.get(s.t); if (b) pull(b, 0.22, 0.002*s.w); }
+    a.vx -= a.x*0.0015; a.vy -= a.y*0.0015; a.vz -= a.z*0.0015;
+  }
+  for (const n of N){ n.vx*=0.85; n.vy*=0.85; n.vz*=0.85; n.x+=n.vx; n.y+=n.vy; n.z+=n.vz; }
+}
+
+function project(o, out, W, H){
+  const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const ox = o.x - center.x, oy = o.y - center.y, oz = o.z - center.z;
+  const x1 = ox*cyw - oz*syw, z1 = ox*syw + oz*cyw;
+  const y2 = oy*cp - z1*sp, z2 = oy*sp + z1*cp;
+  const d = Math.max(0.2, z2 + camDist), s = Math.min(W, H)*0.95 / d;
+  out.sx = W/2 + x1*s; out.sy = H*0.54 + y2*s; out.sc = s; out.d = d;
+  out.fog = Math.max(0.3, Math.min(1, (camDist*1.4 - d) / (camDist*0.8)));
+}
+
+function draw(){
+  const N = net.neurons, W = cv.width, H = cv.height;
+  physics(N);
+  if (autoSpin) yaw += 0.0025;
+  // inquadratura automatica: segue la rete mentre cresce
+  if (N.length){
+    let mx=0, my=0, mz=0; for (const n of N){ mx+=n.x; my+=n.y; mz+=n.z; }
+    mx/=N.length; my/=N.length; mz/=N.length;
+    center.x += (mx-center.x)*0.05; center.y += (my-center.y)*0.05; center.z += (mz-center.z)*0.05;
+    let R = 0; for (const n of N) R = Math.max(R, Math.hypot(n.x-center.x, n.y-center.y, n.z-center.z));
+    const target = Math.max(0.55, R*2.6 + 0.35) * userZoom;
+    camDist += (target - camDist)*0.03;
+  }
+  for (const n of N) project(n, n, W, H);
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#07080c"; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation = "lighter";
+
+  // sinapsi: raggruppate per intensità per disegnarle in fretta
+  const buckets = [[],[],[],[]];
+  for (const a of N) for (const s of a.syn){ const b = byId.get(s.t); if (b) buckets[Math.min(3, (s.w*4)|0)].push(a, b, s.w); }
+  for (let k=0;k<4;k++){
+    const L = buckets[k]; if (!L.length) continue;
+    ctx.strokeStyle = `rgba(110,150,255,${0.06 + k*0.09})`;
+    ctx.lineWidth = (0.6 + k*0.45) * DPR;
+    ctx.beginPath();
+    for (let i=0;i<L.length;i+=3){ const a=L[i], b=L[i+1]; ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); }
+    ctx.stroke();
+  }
+  // legami di nascita (genitore -> figlio), tenui
+  ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = DPR; ctx.beginPath();
+  for (const n of N){ const p = byId.get(n.p); if (p){ ctx.moveTo(n.sx,n.sy); ctx.lineTo(p.sx,p.sy); } }
+  ctx.stroke();
+
+  // impulsi in viaggio
+  const frac = Math.min(1, (performance.now() - lastStepAt) / (1000/HZ));
+  for (const f of flights){
+    const a = byId.get(f.from), b = byId.get(f.to); if (!a || !b) continue;
+    const t = Math.min(1, (net.life + (running ? frac : 0) - f.t0) / f.dur);
+    const px = a.sx + (b.sx - a.sx)*t, py = a.sy + (b.sy - a.sy)*t, sc = a.sc + (b.sc - a.sc)*t;
+    const r = Math.max(1.2*DPR, sc*0.012);
+    ctx.fillStyle = `rgba(255,214,90,${0.35 + 0.65*f.w})`;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = `rgba(255,190,60,${0.12*f.w})`;
+    ctx.beginPath(); ctx.arc(px, py, r*3, 0, 6.2832); ctx.fill();
+  }
+
+  // neuroni, dal più lontano al più vicino
+  const order = N.slice().sort((a,b) => b.d - a.d);
+  for (const n of order){
+    const r = Math.max(1.5*DPR, n.sc * (0.022 + Math.min(0.025, Math.log2(1+n.fires)*0.003)));
+    const hue = (Math.log2(n.f/110)*120) % 360;
+    if (n.flash > 0.04){
+      const g = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, r*5);
+      g.addColorStop(0, `rgba(255,220,110,${0.7*n.flash})`); g.addColorStop(1, "rgba(255,200,80,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.sx, n.sy, r*5, 0, 6.2832); ctx.fill();
+    }
+    ctx.fillStyle = `hsla(${hue},55%,${32 + n.flash*40}%,${n.fog})`;
+    ctx.beginPath(); ctx.arc(n.sx, n.sy, r*(1 + n.flash*0.4), 0, 6.2832); ctx.fill();
+    n.flash *= 0.9;
+  }
+
+  // nascite (anello verde che si allarga) e potature (anello rosso che si chiude)
+  for (let i = rings.length-1; i >= 0; i--){
+    const g = rings[i]; g.t += 0.025; if (g.t >= 1){ rings.splice(i,1); continue; }
+    const o = {}; project(g, o, W, H);
+    const rr = o.sc * (g.kind === "birth" ? 0.02 + g.t*0.12 : 0.12 - g.t*0.1);
+    ctx.strokeStyle = g.kind === "birth" ? `rgba(90,209,160,${1-g.t})` : `rgba(255,110,90,${1-g.t})`;
+    ctx.lineWidth = 2*DPR; ctx.beginPath(); ctx.arc(o.sx, o.sy, Math.max(1, rr), 0, 6.2832); ctx.stroke();
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// rotazione col dito, zoom con due dita
+const ptrs = new Map(); let pinch0 = 0, dist0 = camDist, spinTimer = null;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); autoSpin = false; clearTimeout(spinTimer);
+  if (ptrs.size === 2){ const [a,b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x-b.x, a.y-b.y); dist0 = userZoom; } });
+cv.addEventListener("pointermove", e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  if (ptrs.size === 1){ yaw += (e.clientX - p.x)*0.008; pitch = Math.max(-1.4, Math.min(1.4, pitch + (e.clientY - p.y)*0.008)); }
+  p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 2){ const [a,b] = [...ptrs.values()]; const d = Math.hypot(a.x-b.x, a.y-b.y); if (pinch0 > 0) userZoom = Math.max(0.35, Math.min(4, dist0 * pinch0 / d)); }
+});
+const up = e => { ptrs.delete(e.pointerId); if (!ptrs.size) spinTimer = setTimeout(() => autoSpin = true, 4000); };
+cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+cv.addEventListener("wheel", e => { e.preventDefault(); userZoom = Math.max(0.35, Math.min(4, userZoom * (1 + e.deltaY*0.001))); }, { passive:false });
+
+// tatto: i quattro pulsanti
+for (const pad of document.querySelectorAll(".pad")){
+  const q = +pad.dataset.q;
+  const on = e => { e.preventDefault(); held[q] = true; pad.classList.add("on"); };
+  const off = () => { held[q] = false; pad.classList.remove("on"); };
+  pad.addEventListener("pointerdown", on); pad.addEventListener("pointerup", off);
+  pad.addEventListener("pointercancel", off); pad.addEventListener("pointerleave", off);
+}
+
+// ======================= statistiche =======================
+const $ = id => document.getElementById(id);
+function fmtLife(t){ const s = Math.floor(t/HZ), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : m ? `${m}m ${s%60}s` : `${s}s`; }
+function updateStats(){
+  $("sN").textContent = net.neurons.length; $("sS").textContent = synCount(); $("sB").textContent = net.births;
+  $("sP").textContent = net.prunes; $("sL").textContent = fmtLife(net.life);
+  const p = Math.round(surprise*100); $("surV").textContent = p + "%"; $("surB").style.width = p + "%";
+}
+
+// ======================= memoria sul telefono =======================
+function b64(u8){ let s=""; for (let i=0;i<u8.length;i+=8192) s += String.fromCharCode.apply(null, u8.subarray(i, i+8192)); return btoa(s); }
+function unb64(s){ const b = atob(s), u = new Uint8Array(b.length); for (let i=0;i<b.length;i++) u[i] = b.charCodeAt(i); return u; }
+const r3 = v => Math.round(v*1000)/1000;
+function serialize(){
+  return JSON.stringify({ v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, nextId:net.nextId,
+    neurons: net.neurons.map(n => {
+      const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
+      return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
+               w:b64(new Uint8Array(q.buffer)), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
+    }) });
+}
+function deserialize(text){
+  const d = JSON.parse(text);
+  if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
+  const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, nextId:d.nextId|0, neurons:[] };
+  for (const s of d.neurons.slice(0, MAX_NEURONS)){
+    const q = new Int8Array(unb64(s.w).buffer); if (q.length !== N_IN) throw new Error("file non valido");
+    const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i] = q[i]/127; normalize(w);
+    n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, lastFire:-99, fires:s.fires|0,
+      syn: Array.isArray(s.s) ? s.s.slice(0, MAX_SYN).map(([t,v]) => ({ t, w:v/255 })) : [],
+      x:s.x||0, y:s.y||0, z: s.z ?? (Math.random()-0.5)*0.3, vx:0, vy:0, vz:0, flash:0, s:0 });
+  }
+  n.nextId = Math.max(n.nextId, ...n.neurons.map(m => m.id + 1));
+  return n;
+}
+function idb(){
+  return new Promise((ok, ko) => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error);
+  });
+}
+async function idbGet(){ const db = await idb(); return new Promise((ok, ko) => { const r = db.transaction(STORE).objectStore(STORE).get(KEY); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }); }
+async function idbPut(v){ const db = await idb(); return new Promise((ok, ko) => { const t = db.transaction(STORE, "readwrite"); t.objectStore(STORE).put(v, KEY); t.oncomplete = ok; t.onerror = () => ko(t.error); }); }
+
+function setState(msg){ $("state").textContent = msg; }
+async function save(){
+  const data = serialize(), kb = Math.max(1, Math.round(data.length/1024));
+  try { await idbPut(data); } catch(e) {}
+  try { localStorage.setItem(LS_KEY, data); } catch(e) {}
+  setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${kb} KB`);
+}
+function saveSync(){ try { localStorage.setItem(LS_KEY, serialize()); } catch(e) {} }
+function adopt(n){ net = n; flights = []; recent = []; reindex(); updateStats(); }
+async function load(){
+  let a = null, b = null;
+  try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
+  try { const t = localStorage.getItem(LS_KEY); if (t) b = deserialize(t); } catch(e) {}
+  const pick = (a && b) ? (a.life >= b.life ? a : b) : (a || b);
+  if (pick){
+    adopt(pick);
+    setState(`ricordo ritrovato · ${net.neurons.length} neuroni`);
+    $("wakeMsg").textContent = `Bentornato. Si ricorda tutto: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita.`;
+  } else { reindex(); updateStats(); }
+}
+setInterval(() => { if (running) save(); }, SAVE_EVERY_MS);
+document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
+addEventListener("pagehide", saveSync);
+
+// ======================= risveglio e sonno =======================
+let wakeLock = null;
+async function startCamera(){
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null; prevGray = null;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:320}, height:{ideal:240} } });
+    video.srcObject = camStream; await video.play();
+  } catch(e) { camStream = null; setState("niente vista: permesso camera negato"); }
+}
+async function startMic(){
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:false } });
+    const src = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.5;
+    freq = new Uint8Array(analyser.frequencyBinCount); src.connect(analyser);
+  } catch(e) { setState("niente udito: permesso microfono negato"); }
+}
+async function wake(){
+  if (running) return;
+  if (!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); master = audioCtx.createGain(); master.connect(audioCtx.destination); }
+  try { await audioCtx.resume(); } catch(e) {}
+  $("wake").classList.add("hidden");
+  await startCamera(); if (!micStream) await startMic();
+  running = true; timer = setInterval(step, 1000/HZ);
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e) {}
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch(e) {}
+  if (!$("state").textContent.startsWith("niente")) setState("sveglia");
+}
+async function sleep(){
+  if (!running) return;
+  running = false; clearInterval(timer);
+  if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null;
+  if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; analyser = null;
+  try { if (wakeLock) await wakeLock.release(); } catch(e) {}
+  await save();
+  $("wakeMsg").textContent = `Dorme. Si ricorda tutto: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita.`;
+  $("wake").classList.remove("hidden");
+}
+document.addEventListener("visibilitychange", async () => {
+  if (!document.hidden && running && "wakeLock" in navigator){ try { wakeLock = await navigator.wakeLock.request("screen"); } catch(e) {} }
+});
+
+// ======================= pulsanti =======================
+$("go").onclick = wake;
+$("sleep").onclick = sleep;
+$("sound").onclick = () => { soundOn = !soundOn; $("sound").textContent = "Suono: " + (soundOn ? "sì" : "no"); };
+$("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; if (running) startCamera(); };
+$("exp").onclick = () => {
+  const blob = new Blob([serialize()], { type:"application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = `rete-viva-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$("imp").onclick = () => $("file").click();
+$("file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const n = deserialize(await f.text());
+    if (!confirm(`Caricare questa rete (${n.neurons.length} neuroni)? Quella attuale verrà sostituita.`)) return;
+    adopt(n); await save();
+  } catch(err) { alert("Non riesco a leggere questo file: " + err.message); }
+};
+$("reset").onclick = async () => {
+  if (!confirm("Cancellare tutto quello che ha imparato e ripartire da 4 neuroni?")) return;
+  adopt(fresh()); await save();
+};
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+reindex();
+load();
+</script>
+</body>
+</html>
