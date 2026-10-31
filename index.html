@@ -57,7 +57,8 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
   <div id="hud">
     <canvas id="eyes" width="64" height="48"></canvas>
     <div id="meters">
-      <div class="meter">sorpresa <span id="surV">0%</span><div class="bar"><i id="surB"></i></div></div>
+      <div class="meter">novità <span id="novV">0%</span><div class="bar"><i id="novB"></i></div></div>
+      <div class="meter">attesa tradita <span id="betV">0%</span><div class="bar"><i id="betB" style="background:#6e96ff"></i></div></div>
       <div class="meter">udito<div id="ears"></div></div>
     </div>
   </div>
@@ -103,7 +104,8 @@ const MAX_SYN = 12;               // sinapsi in uscita per neurone
 const HZ = 20;                    // passi al secondo
 const PRUNE_AFTER = HZ * 60 * 5;  // 5 minuti di vita senza scaricare -> potato
 const SAVE_EVERY_MS = 10000;      // salvataggio automatico
-const STDP_WINDOW = 4;            // passi entro cui due impulsi sono "insieme"
+const TRACE_DECAY = 0.88;         // traccia di un impulso: dopo 0,5 s vale ancora un terzo
+const EXPECT_WINDOW = 14;         // passi (0,7 s) per vedere se un annuncio si avvera
 const DB_NAME = "rete-viva", STORE = "rete", KEY = "cervello", LS_KEY = "rete-viva-backup";
 
 // ======================= la rete =======================
@@ -121,7 +123,7 @@ function fresh(){
   return n;
 }
 function makeNeuron(n, w, f, parent, x, y, z){
-  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, lastFire:-99, fires:0, syn:[],
+  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, lastFire:-99, fires:0, syn:[], pred:0, tr:0,
            x, y, z, vx:0, vy:0, vz:0, flash:0, s:0 };
 }
 function randUnit(){ const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i]=Math.random(); return normalize(w); }
@@ -178,6 +180,15 @@ function readHearing(){
 }
 function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i]*0.8; x[IN_V+IN_A+i] = touch[i]; } }
 
+// ogni senso pesa allo stesso modo: 48 pixel di vista non coprono 4 punti di tatto
+function balanceSenses(){
+  for (const [a, b, on] of [[0, IN_V, 0.3], [IN_V, IN_V+IN_A, 0.25], [IN_V+IN_A, N_IN, 0.2]]){
+    let s = 0; for (let i=a;i<b;i++) s += x[i]*x[i]; s = Math.sqrt(s);
+    const k = s > on ? Math.min(1, s) / s : 0;   // attivo: lunghezza fino a 1; troppo debole: zero
+    for (let i=a;i<b;i++) x[i] *= k;
+  }
+}
+
 // ======================= voce =======================
 let soundOn = true, tonesThisStep = 0;
 function tone(f){
@@ -190,32 +201,46 @@ function tone(f){
 }
 
 // ======================= la vita: un passo =======================
-let surprise = 0, highSurprise = 0, lastBirth = -999, running = false, timer = null, lastStepAt = performance.now();
+let surprise = 0, novelty = 0, betrayal = 0, highSurprise = 0, lastBirth = -999, running = false, timer = null, lastStepAt = performance.now();
 let flights = [];          // impulsi in viaggio lungo le sinapsi
-let recent = [];           // neuroni che hanno scaricato da poco (per la regola STDP)
+let pending = [];          // annunci arrivati: aspettano di vedere se il neurone scarica davvero
 const rings = [];          // effetti visivi: nascite e potature
 
 function step(){
   net.life++; tonesThisStep = 0; lastStepAt = performance.now();
   readVision(); readHearing(); readTouch();
+  balanceSenses();
   let e = 0; for (let i=0;i<N_IN;i++) e += x[i]*x[i]; e = Math.sqrt(e);
   const N = net.neurons;
-  let best = null, bs = -1;
+  let best = null, bs = -1, novNow = 0;
   const awake = e > 0.35;
   if (awake){
     for (let i=0;i<N_IN;i++) xn[i] = x[i]/e;
     for (const n of N){ n.s = dot(n.w, xn); if (n.s > bs){ bs = n.s; best = n; } }
-    surprise = surprise*0.8 + (1 - Math.max(0, bs))*0.2;
-  } else { surprise *= 0.95; for (const n of N) n.s = 0; }
+    novNow = 1 - Math.max(0, bs);
+    novelty = novelty*0.8 + novNow*0.2;
+  } else { novelty *= 0.95; for (const n of N) n.s = 0; }
+
+  for (const n of N){ n.pred *= 0.85; n.tr *= TRACE_DECAY; }
+  let kept = 0, broken = 0;                      // annunci avverati e traditi in questo passo
 
   // gli impulsi che arrivano a destinazione caricano il neurone bersaglio
   const still = [];
   for (const f of flights){
-    if (net.life >= f.t0 + f.dur){ const t = byId.get(f.to); if (t) t.v += f.w * 0.55; }
+    if (net.life >= f.t0 + f.dur){
+      const t = byId.get(f.to);
+      if (t){ t.v += f.w * 0.55; t.pred += f.w; if (pending.length < 1500) pending.push({ from:f.from, to:f.to, w:f.w, t:net.life }); }
+    }
     else still.push(f);
   }
   flights = still;
-  recent = recent.filter(r => net.life - r.t <= STDP_WINDOW && byId.has(r.n.id));
+  // annunci scaduti senza che il neurone abbia scaricato: la sinapsi aveva previsto male
+  pending = pending.filter(q => {
+    if (net.life - q.t <= EXPECT_WINDOW) return true;
+    const a = byId.get(q.from), b = byId.get(q.to); if (a && b) weaken(a, b, 0.04);
+    broken += q.w*q.w;                            // le aspettative forti pesano di più
+    return false;
+  });
 
   const firedNow = [];
   for (const n of N){
@@ -228,14 +253,15 @@ function step(){
   }
 
   for (const n of firedNow){
+    // gli annunci verso di me si sono avverati: quelle sinapsi avevano ragione
+    pending = pending.filter(q => { if (q.to !== n.id) return true; const a = byId.get(q.from); if (a) strengthen(a, n, 0.03); kept += q.w*q.w; return false; });
     n.v = 0; n.th += 0.15; n.fires++; n.last = net.life; n.lastFire = net.life; n.flash = 1;
     if (awake){ const lr = n === best ? 0.08 : 0.01; for (let i=0;i<N_IN;i++) n.w[i] += lr*(xn[i]-n.w[i]); normalize(n.w); }
-    // STDP: chi ha scaricato poco prima di me rafforza la sinapsi verso di me
-    for (const r of recent){
-      if (r.n === n) continue;
-      const k = 1 - (net.life - r.t) / (STDP_WINDOW + 1);
-      strengthen(r.n, n, 0.12 * k);
-      weaken(n, r.n, 0.05 * k);
+    // STDP: chi ha scaricato poco prima di me (traccia ancora viva) rafforza la sinapsi verso di me
+    for (const m of N){
+      if (m === n || m.tr < 0.05 || firedNow.includes(m)) continue;
+      strengthen(m, n, 0.08 * m.tr);
+      weaken(n, m, 0.05 * m.tr);
     }
     // l'impulso parte lungo tutte le sinapsi in uscita
     for (const s of n.syn){
@@ -244,11 +270,17 @@ function step(){
     }
     tone(n.f);
   }
-  for (const n of firedNow) recent.push({ n, t:net.life });
+  for (const n of firedNow) n.tr = 1;
 
-  // crescita: la sorpresa che resta alta fa dividere il neurone più vicino all'esperienza nuova
-  if (awake && surprise > 0.4) highSurprise++; else highSurprise = Math.max(0, highSurprise-1);
-  if (highSurprise > 12 && best && net.life - lastBirth > 10){ divide(best); highSurprise = 0; lastBirth = net.life; }
+  // attesa tradita: quota di aspettative che non si sono avverate
+  if (kept + broken > 0.01){ const ev = Math.min(1, (kept + broken)*4); betrayal += (broken/(kept + broken) - betrayal)*0.12*ev; }
+  else betrayal *= 0.97;
+  surprise = Math.max(novelty, awake ? betrayal : 0);   // sorprende sia il mai visto, sia l'atteso che non arriva
+
+  // crescita: la sorpresa (novità o attesa tradita) che resta alta fa dividere il neurone più vicino all'esperienza nuova
+  // la sorpresa si accumula: un evento breve ma molto nuovo basta, una novità debole deve durare di più
+  highSurprise = highSurprise*0.97 + (awake ? Math.max(0, Math.max(novNow, betrayal) - 0.4) : 0);
+  if (highSurprise > 1.5 && best && net.life - lastBirth > 20){ divide(best); highSurprise = 0; lastBirth = net.life; }
 
   if (net.life % HZ === 0){ decaySynapses(); prune(); }
   if (net.life % 4 === 0) updateStats();
@@ -398,6 +430,10 @@ function draw(){
       g.addColorStop(0, `rgba(255,220,110,${0.7*n.flash})`); g.addColorStop(1, "rgba(255,200,80,0)");
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.sx, n.sy, r*5, 0, 6.2832); ctx.fill();
     }
+    if (n.pred > 0.15){            // alone azzurro: la rete si aspetta che questo neurone scarichi
+      ctx.strokeStyle = `rgba(110,150,255,${Math.min(0.8, n.pred*0.6)})`; ctx.lineWidth = 1.5*DPR;
+      ctx.beginPath(); ctx.arc(n.sx, n.sy, r*2.2, 0, 6.2832); ctx.stroke();
+    }
     ctx.fillStyle = `hsla(${hue},55%,${32 + n.flash*40}%,${n.fog})`;
     ctx.beginPath(); ctx.arc(n.sx, n.sy, r*(1 + n.flash*0.4), 0, 6.2832); ctx.fill();
     n.flash *= 0.9;
@@ -444,7 +480,9 @@ function fmtLife(t){ const s = Math.floor(t/HZ), h = Math.floor(s/3600), m = Mat
 function updateStats(){
   $("sN").textContent = net.neurons.length; $("sS").textContent = synCount(); $("sB").textContent = net.births;
   $("sP").textContent = net.prunes; $("sL").textContent = fmtLife(net.life);
-  const p = Math.round(surprise*100); $("surV").textContent = p + "%"; $("surB").style.width = p + "%";
+  const a = Math.round(novelty*100), b = Math.round(betrayal*100);
+  $("novV").textContent = a + "%"; $("novB").style.width = a + "%";
+  $("betV").textContent = b + "%"; $("betB").style.width = b + "%";
 }
 
 // ======================= memoria sul telefono =======================
@@ -466,7 +504,7 @@ function deserialize(text){
   for (const s of d.neurons.slice(0, MAX_NEURONS)){
     const q = new Int8Array(unb64(s.w).buffer); if (q.length !== N_IN) throw new Error("file non valido");
     const w = new Float32Array(N_IN); for (let i=0;i<N_IN;i++) w[i] = q[i]/127; normalize(w);
-    n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, lastFire:-99, fires:s.fires|0,
+    n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
       syn: Array.isArray(s.s) ? s.s.slice(0, MAX_SYN).map(([t,v]) => ({ t, w:v/255 })) : [],
       x:s.x||0, y:s.y||0, z: s.z ?? (Math.random()-0.5)*0.3, vx:0, vy:0, vz:0, flash:0, s:0 });
   }
@@ -491,7 +529,7 @@ async function save(){
   setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${kb} KB`);
 }
 function saveSync(){ try { localStorage.setItem(LS_KEY, serialize()); } catch(e) {} }
-function adopt(n){ net = n; flights = []; recent = []; reindex(); updateStats(); }
+function adopt(n){ net = n; flights = []; pending = []; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
