@@ -1092,9 +1092,10 @@ function project(o, out, W, H){
 // Livelli della grafica: 0 completa; poi meno pixel, meno sinapsi accese, meno fotogrammi.
 // Ogni 2 secondi si annota quanti passi ha fatto lei e quanto tempo ha preso il disegno, ma si decide sempre
 // sugli ultimi 20 secondi: un inciampo di un attimo non conta.
-// Grafica automatica: se per 20 secondi vive a meno di 18,5 passi al secondo prova a semplificare di un livello,
-// e dopo altri 20 secondi controlla: se è migliorata resta così; se no e il disegno pesa ancora, prova un livello in più;
-// se no torna com'era (il disegno non c'entrava) e per un po' non riprova. Quando va bene da un po', riprova più ricca.
+// Grafica automatica: se per 20 secondi vive a meno di 18,5 passi al secondo e il disegno occupa almeno un decimo del tempo,
+// prova a semplificare di un livello, e dopo altri 20 secondi controlla: se è tornata al suo ritmo, o è migliorata di
+// almeno un passo al secondo, resta così; se no e il disegno pesa ancora, prova un livello in più; se no torna com'era
+// (il disegno non c'entrava) e per un po' non riprova. Quando va bene da un po', riprova più ricca.
 const Q_FPS = [60, 60, 30, 15, 8, 4], Q_FLIGHTS = [900, 400, 200, 80, 40, 15], Q_SYN = [0, 0, 1, 2, 3, 4], Q_MAX = 5;
 let lastRender = 0, rateLife = 0, rateT = performance.now(), calmSince = performance.now(), upWait = 30000, lastUp = -1e9;
 let trial = null, noTryUntil = 0, tryWait = 300000;
@@ -1102,14 +1103,14 @@ function setQ(q){ q = Math.max(0, Math.min(Q_MAX, q)); rateHist = []; if (q !== 
 function adaptQ(now){
   if (rateHist.length < 10) return;                        // si decide solo su 20 secondi interi
   if (trial){                                               // aveva provato a semplificare: è servito?
-    if (rateAvg >= trial.before + 0.5 || rateAvg >= 19.5){
+    if (rateAvg >= 18.5 || rateAvg >= trial.before + 1){
       if (now - lastUp < 60000) upWait = Math.min(600000, upWait*2);   // aveva appena arricchito e non reggeva: aspetterà di più
       trial = null; calmSince = now; tryWait = 300000;
     } else if (drawShare > 0.1 && Q < Q_MAX) setQ(Q + 1);             // il disegno pesa ancora: un livello in più
     else { setQ(trial.q); trial = null; noTryUntil = now + tryWait; tryWait = Math.min(1800000, tryWait*2); }   // non serviva
     return;
   }
-  if (rateAvg < 18.5 && Q < Q_MAX && now > noTryUntil){ trial = { q: Q, before: rateAvg }; setQ(Q + 1); return; }
+  if (rateAvg < 18.5 && drawShare >= 0.1 && Q < Q_MAX && now > noTryUntil){ trial = { q: Q, before: rateAvg }; setQ(Q + 1); return; }
   if (rateAvg < 19.5) calmSince = now;
   else if (Q > 0 && now - calmSince > upWait){ setQ(Q - 1); lastUp = now; calmSince = now; }
 }
@@ -1696,7 +1697,7 @@ try { const pr = JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); if (pr.cam 
 function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ cam:camOn, mic:micOn, voice:voiceOn, facing, graf:gfxMode })); } catch(e) {} }
 const GFX_HINT = {
   piena: "Sempre nitida, con tutte le sinapsi accese. Se un giorno il disegno la rallentasse, lo leggi sotto la rete.",
-  auto: "Piena finché lei vive al suo ritmo. Se per 20 secondi rallenta, prova a semplificare: se aiuta resta, se no torna com'era.",
+  auto: "Piena finché lei vive al suo ritmo. Se per 20 secondi rallenta e il disegno pesa, prova a semplificare: se aiuta resta, se no torna com'era.",
   leggera: "Meno pixel, metà dei fotogrammi e meno sinapsi accese: consuma meno batteria.",
 };
 function refreshGfx(){
