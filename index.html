@@ -408,8 +408,8 @@ function voiceStep(firedNow){
   loudNow = speaking ? loud : 0;
   if (S > 0.2) voiceF = Math.pow(2, lf/S);
   voiceAmp = speaking ? 0.28*loud*Math.min(1, breath*3) : 0;
-  // il fiato: si consuma parlando (circa 4 secondi a piena voce) e si ricarica in silenzio
-  breath = speaking ? Math.max(0, breath - 0.012*loud) : Math.min(1, breath + 0.012);
+  // il fiato: si consuma parlando (circa 10 secondi a piena voce) e si ricarica in silenzio (circa 4 secondi)
+  breath = speaking ? Math.max(0, breath - 0.005*loud) : Math.min(1, breath + 0.012);
   mouthNow = articulate({ J:jaw, T:art.T, L:art.L, V:art.V, B:art.B });
   const burst = speaking && prevOpen < 0.15 && mouthNow.open > 0.3 ? 1 : 0;   // la bocca si riapre dopo una chiusura: scoppio d'aria
   prevOpen = mouthNow.open;
