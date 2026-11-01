@@ -14,6 +14,7 @@
 <style>
 :root{--bg:#07080c;--panel:#12151d;--line:#232a37;--text:#e7ebf2;--dim:#8a94a6;--accent:#ffd34d;--good:#5ad1a0}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+[hidden]{display:none !important}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
 body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 4px}
@@ -56,6 +57,86 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 #sheet button{flex:0 0 auto;min-height:48px;font-size:15px;text-align:left;padding:10px 14px;background:#191d27}
 #sheet .danger{color:#ff8a7a;border-color:#5a2a26;margin-top:6px}
 #sheet .cancel{text-align:center;color:var(--dim);background:transparent}
+/* pannello Altro */
+.tiles2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#sheet .tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:88px;padding:12px;border-radius:14px;text-align:left}
+.tile svg{width:22px;height:22px;stroke:var(--accent);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;margin-bottom:4px}
+.tile b{font-size:14px;font-weight:650}
+.tile span{font-size:11px;color:var(--dim);line-height:1.3}
+#sheet .copyline{min-height:40px;font-size:12px;color:var(--dim);background:transparent;border-style:dashed}
+/* pagina del diario */
+.page{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.pg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 4px;width:100%;max-width:760px;margin:0 auto}
+.pg-head h2{margin:0;font-size:21px;font-weight:650;letter-spacing:.01em}
+.pg-head p{margin:3px 0 0;font-size:12px;color:var(--dim)}
+.iconbtn{flex:0 0 auto;width:40px;height:40px;min-height:40px;padding:0;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.iconbtn svg{width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round}
+.tabs{display:flex;gap:4px;margin:8px auto 0;width:calc(100% - 32px);max-width:728px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.tabs button{flex:1;min-height:36px;border:0;border-radius:9px;background:transparent;color:var(--dim);font-size:13px;font-weight:600}
+.tabs button[aria-selected="true"]{background:#1e2432;color:var(--text)}
+.pg-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px max(16px, calc((100% - 728px)/2)) 28px;display:flex;flex-direction:column;gap:12px}
+.filters{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.seg{display:flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.seg button{flex:0 0 auto;min-height:30px;padding:4px 10px;border:0;border-radius:8px;background:transparent;color:var(--dim);font-size:12px}
+.seg button[aria-pressed="true"]{background:#1e2432;color:var(--text)}
+@media (max-width:400px){ .seg button{padding:4px 7px} .tile3 .dl{font-size:10px} }
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile3{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.tile3 .lab{font-size:11px;color:var(--dim)}
+.tile3 .val{font-size:clamp(17px, 5.4vw, 22px);font-weight:650;margin-top:2px;white-space:nowrap}
+.tile3 .dl{font-size:11px;color:var(--dim);margin-top:1px}
+.card{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 12px 8px}
+.card figcaption{display:flex;align-items:baseline;justify-content:space-between;gap:6px 10px;flex-wrap:wrap;margin-bottom:8px}
+.card figcaption b{font-size:13px;font-weight:650}
+.card figcaption .sub{font-size:11px;color:var(--dim);font-weight:400;margin-left:6px}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--dim)}
+.legend i{display:inline-block;width:12px;height:2px;border-radius:1px;vertical-align:middle;margin-right:5px}
+.legend i.sq{width:8px;height:8px;border-radius:2px}
+.plot{position:relative;touch-action:pan-y}
+.plot canvas{display:block;width:100%}
+.xh{position:absolute;width:1px;background:#4a5568;pointer-events:none}
+.mk{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;box-shadow:0 0 0 2px var(--panel);pointer-events:none}
+.tip{position:absolute;top:2px;pointer-events:none;background:#0b0e14f2;border:1px solid #2a3242;border-radius:10px;padding:6px 9px;font-size:11px;color:var(--dim);white-space:nowrap;z-index:2}
+.tip .r{display:flex;align-items:center;gap:6px;margin-top:3px}
+.tip .r b{color:var(--text);font-weight:650;font-variant-numeric:tabular-nums}
+.tip .r i{width:10px;height:2px;border-radius:1px}
+.tip .r i.sq{width:7px;height:7px;border-radius:2px}
+.empty{font-size:12px;color:var(--dim);text-align:center;padding:22px 8px;line-height:1.5}
+.tablewrap{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table.dt{width:100%;border-collapse:collapse;font-size:11px}
+.dt th{color:var(--dim);font-weight:600;text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--panel)}
+.dt td{text-align:right;padding:6px 8px;border-bottom:1px solid #161b25;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dt th:first-child,.dt td:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+.dt th:first-child{z-index:1}
+.note2{font-size:11px;color:var(--dim)}
+.mchips{display:flex;gap:6px;flex-wrap:wrap}
+#momList .more{display:block;width:100%;margin-top:12px;color:var(--dim)}
+.day{font-size:11px;color:var(--dim);font-weight:650;text-transform:uppercase;letter-spacing:.06em;margin:8px 0 0}
+.mom{display:grid;grid-template-columns:42px 30px 1fr;gap:8px;align-items:start;padding:9px 0;border-bottom:1px solid #161b25}
+.mom .tm{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;padding-top:6px}
+.mom .ic{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#171c27}
+.mom .ic svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.mom .tx{font-size:14px;line-height:1.35;padding-top:4px}
+.mom .tx small{display:block;font-size:11px;color:var(--dim);margin-top:2px}
+.cinfo{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12px;color:var(--dim);display:flex;flex-direction:column;gap:10px;line-height:1.45}
+.cinfo button{align-self:flex-start;flex:0 0 auto;min-height:40px;color:var(--text)}
+.copy{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.copy .cx{flex:1;min-width:0}
+.copy .cx b{display:block;font-size:13px;font-weight:650}
+.copy .cx span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
+.copy button{flex:0 0 auto;min-height:36px;font-size:12px}
+/* avvisi dei momenti */
+.toast{position:fixed;z-index:35;top:calc(env(safe-area-inset-top) + 48px);left:calc(clamp(140px, 36vw, 240px) + 8px);right:12px;display:flex;justify-content:center;pointer-events:none}
+.tin{display:flex;align-items:center;gap:9px;max-width:100%;padding:9px 13px;border-radius:12px;background:#151a24f2;border:1px solid #2a3242;font-size:13px;line-height:1.3;box-shadow:0 8px 28px #000a;opacity:0;transform:translateY(-6px);transition:opacity .3s, transform .3s}
+.toast.show .tin{opacity:1;transform:none}
+.tin svg{flex:0 0 auto;width:16px;height:16px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tin span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--text)}
+/* modalità notte */
+#night{position:fixed;inset:0;z-index:50;background:#000}
+.nbox{position:absolute;display:flex;align-items:center;gap:8px;transition:left 3s ease, top 3s ease;transform:translate(-50%,-50%)}
+.ndot{width:6px;height:6px;border-radius:50%;background:#2c3446;transition:background .8s}
+.ntext{font-size:11px;color:#2a303b;letter-spacing:.02em;white-space:nowrap}
+.nexit{position:absolute;left:0;right:0;margin:0 auto;width:max-content;bottom:calc(env(safe-area-inset-bottom) + 32px);flex:0 0 auto;min-height:46px;padding:8px 20px;border-radius:12px;background:#0b0d12;border:1px solid #232a37;color:#8a94a6;font-size:14px}
 .eyeoff{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim);pointer-events:none}
 .note{font-size:10px;color:#ffb27a;margin-top:2px;line-height:1.3}
 button{flex:1 1 auto;min-height:40px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px}
@@ -65,6 +146,9 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 #eyeBig.hidden{display:none}
 #eyesBig{display:block;border:1px solid var(--line);border-radius:8px;background:#000}
 #eyeBig p{margin:0;max-width:520px;font-size:12px;color:var(--dim);text-align:center}
+.chips{display:flex;gap:8px;justify-content:center}
+.chip{flex:0 0 auto;min-height:32px;padding:4px 12px;border-radius:999px;font-size:12px;color:var(--dim);background:transparent}
+.chip[aria-pressed="true"]{color:var(--text);background:var(--panel);border-color:#3a4458}
 #wake{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#07080cf4;text-align:center;padding:24px}
 #wake p{max-width:340px;color:var(--dim);margin:0}
 #wake button{flex:0 0 auto;min-width:200px;min-height:48px}
@@ -81,7 +165,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <div id="main">
   <aside id="side">
     <div class="eyebox" id="eyebox" title="tocca per ingrandire">
-      <canvas id="eyes" width="64" height="48"></canvas>
+      <canvas id="eyes" width="128" height="96"></canvas>
       <span class="eyeoff" id="eyeOff" hidden>camera spenta</span>
       <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="#e7ebf2" stroke-width="1.6"/><path d="M10 10l4.5 4.5" stroke="#e7ebf2" stroke-width="1.8" stroke-linecap="round"/></svg>
     </div>
@@ -107,8 +191,9 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
     <div id="help">trascina per ruotare · due dita per lo zoom</div>
   </div>
   <div id="eyeBig" class="hidden">
+    <div class="chips"><button class="chip" id="sceneBtn" aria-pressed="false">Scena sotto: no</button></div>
     <canvas id="eyesBig"></canvas>
-    <p>Vede solo ciò che si muove: giallo dove la luce aumenta, azzurro dove diminuisce, in proporzione alla luce della stanza. I riquadri gialli sono le 48 zone che coprono tutta la vista. Al centro, nel riquadro azzurro, c'è la fovea: 24 zone più piccole con il doppio dei dettagli. Più movimento c'è, più il riquadro è spesso. Tocca per chiudere.</p>
+    <p>Vede solo ciò che si muove: giallo dove la luce aumenta, azzurro dove diminuisce, in proporzione alla luce della stanza. I riquadri gialli sono le 48 zone che coprono tutta la vista. Al centro, nel riquadro azzurro, c'è la fovea: 54 zone più piccole con il doppio dei dettagli. "Scena sotto" mostra anche l'immagine vera, scurita: lei però vede solo i punti colorati. Più movimento c'è, più il riquadro è spesso. Tocca per chiudere.</p>
   </div>
   <div id="wake">
     <p id="wakeMsg">Parte con pochi neuroni. Vede quello che si muove e sente i suoni. Ha una voce con corde vocali e bocca: all'inizio fa versi spontanei, vocali e sillabe, si ascolta e impara a riconoscersi; poi prova a rifare i suoni che sente. Più impara, più ha voglia di parlare. Quando qualcosa la sorprende, un neurone si divide per impararlo. I neuroni che scaricano insieme creano sinapsi, quelli inutili vengono potati.</p>
@@ -127,6 +212,11 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <div id="sheet" class="hidden">
   <div class="box" role="dialog" aria-label="La rete">
     <h2>La rete</h2>
+    <div class="tiles2">
+      <button class="tile" id="openDiary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M5 15l4-4 3 3 7-7"/><path d="M15 7h4v4"/></svg><b>Diario</b><span>crescita, momenti e copie</span></button>
+      <button class="tile" id="nightBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><path d="M17.5 3v3M16 4.5h3"/></svg><b>Modalità notte</b><span>schermo nero, lei resta sveglia</span></button>
+    </div>
+    <button class="copyline" id="copyLine">Copie di sicurezza</button>
     <button id="exp">Salva su file</button>
     <button id="imp">Carica da file</button>
     <button id="reset" class="danger">Ricomincia da capo</button>
@@ -135,10 +225,54 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 </div>
 <input type="file" id="file" accept=".json,application/json">
 
+<section id="diaryPage" class="page" role="dialog" aria-label="Diario" hidden>
+  <header class="pg-head">
+    <div><h2>Diario</h2><p id="dSub"></p></div>
+    <button class="iconbtn" id="diaryClose" aria-label="Chiudi il diario"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="crescita" aria-selected="true">Crescita</button>
+    <button role="tab" data-tab="momenti" aria-selected="false">Momenti</button>
+    <button role="tab" data-tab="copie" aria-selected="false">Copie</button>
+  </nav>
+  <div class="pg-body" id="tab-crescita">
+    <div class="filters">
+      <div class="seg" id="rangeSeg" role="group" aria-label="Periodo">
+        <button data-r="oggi">Oggi</button><button data-r="7g">7 giorni</button><button data-r="30g">30 giorni</button><button data-r="tutto">Tutto</button>
+      </div>
+      <div class="seg" id="viewSeg" role="group" aria-label="Vista">
+        <button data-v="grafici">Grafici</button><button data-v="tabella">Tabella</button>
+      </div>
+    </div>
+    <div class="stats3" id="dStats"></div>
+    <div id="dCharts"></div>
+    <div id="dTable" hidden></div>
+  </div>
+  <div class="pg-body" id="tab-momenti" hidden>
+    <div class="mchips" id="momChips" role="group" aria-label="Tipo di momento"></div>
+    <div id="momList"></div>
+  </div>
+  <div class="pg-body" id="tab-copie" hidden>
+    <div class="cinfo">
+      <div>Ogni giorno, la prima volta che la svegli, viene fatta da sola una copia della rete, e se ne tengono 7. Un'altra viene fatta prima di ricominciare, di caricare un file o di ripristinare una copia: così puoi sempre tornare indietro. Diario e momenti restano com'erano, e annotano anche il ripristino.</div>
+      <div id="cSpace"></div>
+      <button id="copyNow">Fai una copia adesso</button>
+    </div>
+    <div id="copyList"></div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><div class="tin" id="toastIn"></div></div>
+
+<div id="night" hidden>
+  <div class="nbox" id="nbox"><div class="ndot" id="ndot"></div><div class="ntext" id="ntext"></div></div>
+  <button class="nexit" id="nightExit" hidden>Esci dalla modalità notte</button>
+</div>
+
 <script>
 "use strict";
 // ======================= parametri =======================
-const IN_V = 48, IN_F = 24, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, fovea, bande dell'udito, altezza, sagoma del suono
+const IN_V = 48, IN_F = 54, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, fovea, bande dell'udito, altezza, sagoma del suono
 const OFF_F = IN_V, OFF_A = OFF_F + IN_F, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 124 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
 const EAR_F = Array.from({length:IN_P}, (_, k) => 80 * Math.pow(1500/80, k/(IN_P-1)));
@@ -179,7 +313,7 @@ let byId = new Map();
 function reindex(){ byId = new Map(net.neurons.map(n => [n.id, n])); }
 
 function fresh(){
-  const n = { life:0, births:0, prunes:0, babbles:0, replies:0, nextId:0, neurons:[], voice:newVoiceMind() };
+  const n = { life:0, births:0, prunes:0, babbles:0, replies:0, nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
   const tones = [220, 277.18, 329.63, 415.3];
   for (let i = 0; i < MIN_NEURONS; i++){
     const a = i / MIN_NEURONS * Math.PI * 2;
@@ -201,10 +335,17 @@ function synCount(){ let c=0; for (const n of net.neurons) c += n.syn.length; re
 // ======================= sensi =======================
 const x = new Float32Array(N_IN), xn = new Float32Array(N_IN);
 const video = document.createElement("video"); video.playsInline = true; video.muted = true;
-// la retina: tutta l'immagine a bassa risoluzione (64 x 48 punti, 48 zone) e, al centro, una fovea con il doppio
-// dei dettagli (48 x 32 punti sul riquadro centrale, 24 zone più piccole), come l'occhio umano
-const VW = 64, VH = 48, FW = 48, FH = 32;
-const FX0 = 20, FY0 = 16, FX1 = 44, FY1 = 32;          // dove sta la fovea nell'immagine intera
+// la retina: tutta l'immagine (128 x 96 punti, che arrivano ai neuroni come 48 zone) e, al centro, una fovea con il
+// doppio dei dettagli (96 x 64 punti sul riquadro centrale, 54 zone più piccole), come l'occhio umano
+const VW = 128, VH = 96, FW = 96, FH = 64;
+const FX0 = 40, FY0 = 32, FX1 = 88, FY1 = 64;          // dove sta la fovea nell'immagine intera
+const PCOLS = 8, PROWS = 6, FCOLS = 9, FROWS = 6;        // zone della vista intera e della fovea
+// a quale zona appartiene ogni punto (calcolato una volta sola)
+const cellOf = (w, h, cols, rows) => Int16Array.from({length:w*h}, (_, i) => ((((i / w) | 0) * rows / h) | 0)*cols + (((i % w) * cols / w) | 0));
+const CELL_W = cellOf(VW, VH, PCOLS, PROWS), CELL_F = cellOf(FW, FH, FCOLS, FROWS);
+// una zona è "piena" quando si muove circa un terzo dei suoi punti
+const FULL_W = VW*VH/(PCOLS*PROWS)*0.3125, FULL_F = FW*FH/(FCOLS*FROWS)*0.3125;
+const LOG_LUT = Float32Array.from({length:256}, (_, i) => Math.log(i + 16));
 const grab = document.createElement("canvas"); grab.width = VW; grab.height = VH;
 const gctx = grab.getContext("2d", { willReadFrequently:true });
 const fgrab = document.createElement("canvas"); fgrab.width = FW; fgrab.height = FH;
@@ -227,11 +368,11 @@ const bandBase = new Float32Array(IN_A);
 // si muove insieme (il telefono in mano): si abitua e non viene sommersa.
 const EV_T = 0.12;                                       // soglia minima: circa il 12% di cambiamento di luce
 const retinaHist = new Uint32Array(64);
-function retina(c2, w, h, st, img, cells, cols, cellPx){
+function retina(c2, w, h, st, img, cells, cellIdx){
   const d = c2.getImageData(0, 0, w, h).data, n = w*h, L = new Float32Array(n), ev = img.data;
-  for (let i=0, j=0; i<n; i++, j+=4) L[i] = Math.log(d[j]*0.3 + d[j+1]*0.59 + d[j+2]*0.11 + 16);
+  for (let i=0, j=0; i<n; i++, j+=4) L[i] = LOG_LUT[(d[j]*0.3 + d[j+1]*0.59 + d[j+2]*0.11 + 0.5) | 0];
   const prev = st.prev; st.prev = L;
-  if (!prev){ for (let i=0;i<n;i++){ const k = i*4; ev[k] = ev[k+1] = ev[k+2] = 0; ev[k+3] = 255; } return; }
+  if (!prev){ for (let i=0;i<n;i++) ev[i*4+3] = 0; return; }
   let m = 0; for (let i=0;i<n;i++) m += L[i] - prev[i];
   m = Math.max(-0.5, Math.min(0.5, m/n));
   retinaHist.fill(0);
@@ -241,11 +382,10 @@ function retina(c2, w, h, st, img, cells, cols, cellPx){
   const T = Math.max(EV_T, 3.5*1.4826*st.noise);
   for (let i=0;i<n;i++){
     const diff = L[i] - prev[i] - m, k = i*4;
-    if (diff > T){ ev[k]=255; ev[k+1]=211; ev[k+2]=77; }
-    else if (diff < -T){ ev[k]=90; ev[k+1]=160; ev[k+2]=255; }
-    else { ev[k]=ev[k+1]=ev[k+2]=0; }
-    ev[k+3]=255;
-    if (diff > T || diff < -T) cells[(((i / w) | 0) / cellPx | 0)*cols + (((i % w) / cellPx) | 0)]++;
+    // dove non succede niente il punto resta trasparente: sotto si vede il nero, o la scena se la mostri
+    if (diff > T){ ev[k]=255; ev[k+1]=211; ev[k+2]=77; ev[k+3]=255; cells[cellIdx[i]]++; }
+    else if (diff < -T){ ev[k]=90; ev[k+1]=160; ev[k+2]=255; ev[k+3]=255; cells[cellIdx[i]]++; }
+    else ev[k+3]=0;
   }
 }
 function readVision(){
@@ -254,52 +394,61 @@ function readVision(){
   const vw = video.videoWidth || VW, vh = video.videoHeight || VH;
   fctx.drawImage(video, vw*FX0/VW, vh*FY0/VH, vw*(FX1-FX0)/VW, vh*(FY1-FY0)/VH, 0, 0, FW, FH);
   const cells = new Float32Array(IN_V), fcells = new Float32Array(IN_F);
-  retina(gctx, VW, VH, retW, evImg, cells, 8, 8);
-  retina(fctx, FW, FH, retF, fvImg, fcells, 6, 8);
-  ectx.putImageData(evImg, 0, 0);
-  ectx.strokeStyle = "rgba(120,220,255,0.35)"; ectx.lineWidth = 1;      // dove sta la fovea
-  ectx.strokeRect(FX0 + 0.5, FY0 + 0.5, FX1 - FX0 - 1, FY1 - FY0 - 1);
+  retina(gctx, VW, VH, retW, evImg, cells, CELL_W);
+  retina(fctx, FW, FH, retF, fvImg, fcells, CELL_F);
+  if (!nightOn && !diaryOpen){                                            // nascosta: inutile disegnarla
+    ectx.putImageData(evImg, 0, 0);
+    ectx.strokeStyle = "rgba(120,220,255,0.35)"; ectx.lineWidth = 1;      // dove sta la fovea
+    ectx.strokeRect(FX0 + 0.5, FY0 + 0.5, FX1 - FX0 - 1, FY1 - FY0 - 1);
+  }
   fvctx.putImageData(fvImg, 0, 0);
-  for (let i=0;i<IN_V;i++) visIn[i] = x[i] = Math.min(1, cells[i] / 20);
-  for (let i=0;i<IN_F;i++) visIn[IN_V+i] = x[OFF_F+i] = Math.min(1, fcells[i] / 20);
+  for (let i=0;i<IN_V;i++) visIn[i] = x[i] = Math.min(1, cells[i] / FULL_W);
+  for (let i=0;i<IN_F;i++) visIn[IN_V+i] = x[OFF_F+i] = Math.min(1, fcells[i] / FULL_F);
+  noteSight();
   drawEyeBig();
 }
 
-// la vista ingrandita: gli stessi eventi, le 48 zone (8 x 6) e, al centro, la fovea con le sue 24 zone (6 x 4)
+// la vista ingrandita: gli stessi eventi, le 48 zone (8 x 6) e, al centro, la fovea con le sue 54 zone (9 x 6).
+// Se vuoi, sotto si vede anche la scena vera, scurita: aiuta a capire cosa si sta muovendo
 const visIn = new Float32Array(IN_V + IN_F);
 const eyeBigEl = document.getElementById("eyeBig"), ebig = document.getElementById("eyesBig"), ebctx = ebig.getContext("2d");
-let eyeBigOpen = false;
+let eyeBigOpen = false, showScene = false;
+try { showScene = localStorage.getItem("rete-viva-scena") === "1"; } catch(e) {}
 function sizeEyeBig(){
   const r = eyeBigEl.getBoundingClientRect(), dpr = Math.min(3, devicePixelRatio || 1);
-  const cap = eyeBigEl.querySelector("p").offsetHeight + 12;
+  const cap = eyeBigEl.querySelector("p").offsetHeight + eyeBigEl.querySelector(".chips").offsetHeight + 24;
   const w = Math.max(64, Math.min(r.width - 32, (r.height - 32 - cap)*4/3)), h = w*3/4;
   ebig.style.width = w + "px"; ebig.style.height = h + "px";
   ebig.width = Math.round(w*dpr); ebig.height = Math.round(h*dpr);
 }
 function drawEyeBig(){
   if (!eyeBigOpen) return;
-  const W = ebig.width, H = ebig.height, cw = W/8, ch = H/6, lw = Math.max(1, W/400);
+  const W = ebig.width, H = ebig.height, cw = W/PCOLS, ch = H/PROWS, lw = Math.max(1, W/400);
+  const fx = W*FX0/VW, fy = H*FY0/VH, fw = W*(FX1-FX0)/VW, fh = H*(FY1-FY0)/VH, fcw = fw/FCOLS, fch = fh/FROWS;
   ebctx.imageSmoothingEnabled = false;
-  ebctx.drawImage(eyes, 0, 0, W, H);
+  ebctx.globalAlpha = 1; ebctx.fillStyle = "#000"; ebctx.fillRect(0, 0, W, H);
+  if (showScene && camStream && video.readyState >= 2){ ebctx.imageSmoothingEnabled = true; ebctx.globalAlpha = 0.32; ebctx.drawImage(video, 0, 0, W, H); ebctx.globalAlpha = 1; ebctx.imageSmoothingEnabled = false; }
+  // i punti della vista intera, tranne il riquadro della fovea (lì ci vanno i suoi punti più fini)
+  const sx = VW/W, sy = VH/H;
+  for (const [x0, y0, x1, y1] of [[0, 0, W, fy], [0, fy + fh, W, H], [0, fy, fx, fy + fh], [fx + fw, fy, W, fy + fh]])
+    if (x1 > x0 && y1 > y0) ebctx.drawImage(eyes, x0*sx, y0*sy, (x1-x0)*sx, (y1-y0)*sy, x0, y0, x1-x0, y1-y0);
+  ebctx.drawImage(fovEl, fx, fy, fw, fh);
   ebctx.strokeStyle = "rgba(255,255,255,0.12)"; ebctx.lineWidth = lw; ebctx.beginPath();
-  for (let i=1;i<8;i++){ ebctx.moveTo(i*cw, 0); ebctx.lineTo(i*cw, H); }
-  for (let j=1;j<6;j++){ ebctx.moveTo(0, j*ch); ebctx.lineTo(W, j*ch); }
+  for (let i=1;i<PCOLS;i++){ ebctx.moveTo(i*cw, 0); ebctx.lineTo(i*cw, H); }
+  for (let j=1;j<PROWS;j++){ ebctx.moveTo(0, j*ch); ebctx.lineTo(W, j*ch); }
   ebctx.stroke();
-  for (let j=0;j<6;j++) for (let i=0;i<8;i++){
-    const v = visIn[j*8 + i]; if (v < 0.03) continue;
+  for (let j=0;j<PROWS;j++) for (let i=0;i<PCOLS;i++){
+    const v = visIn[j*PCOLS + i]; if (v < 0.03) continue;
     ebctx.strokeStyle = `rgba(255,211,77,${0.3 + 0.7*v})`; ebctx.lineWidth = lw*(1 + 4*v);
     ebctx.strokeRect(i*cw + 3*lw, j*ch + 3*lw, cw - 6*lw, ch - 6*lw);
   }
-  // la fovea: i suoi punti più fini al loro posto, e le sue 24 zone
-  const fx = W*FX0/VW, fy = H*FY0/VH, fw = W*(FX1-FX0)/VW, fh = H*(FY1-FY0)/VH, fcw = fw/6, fch = fh/4;
-  ebctx.drawImage(fovEl, fx, fy, fw, fh);
-  ebctx.strokeStyle = "rgba(120,220,255,0.18)"; ebctx.lineWidth = lw; ebctx.beginPath();
-  for (let i=1;i<6;i++){ ebctx.moveTo(fx + i*fcw, fy); ebctx.lineTo(fx + i*fcw, fy + fh); }
-  for (let j=1;j<4;j++){ ebctx.moveTo(fx, fy + j*fch); ebctx.lineTo(fx + fw, fy + j*fch); }
+  ebctx.strokeStyle = "rgba(120,220,255,0.16)"; ebctx.lineWidth = lw; ebctx.beginPath();
+  for (let i=1;i<FCOLS;i++){ ebctx.moveTo(fx + i*fcw, fy); ebctx.lineTo(fx + i*fcw, fy + fh); }
+  for (let j=1;j<FROWS;j++){ ebctx.moveTo(fx, fy + j*fch); ebctx.lineTo(fx + fw, fy + j*fch); }
   ebctx.stroke();
-  for (let j=0;j<4;j++) for (let i=0;i<6;i++){
-    const v = visIn[IN_V + j*6 + i]; if (v < 0.03) continue;
-    ebctx.strokeStyle = `rgba(120,220,255,${0.35 + 0.65*v})`; ebctx.lineWidth = lw*(1 + 3*v);
+  for (let j=0;j<FROWS;j++) for (let i=0;i<FCOLS;i++){
+    const v = visIn[IN_V + j*FCOLS + i]; if (v < 0.03) continue;
+    ebctx.strokeStyle = `rgba(120,220,255,${0.35 + 0.65*v})`; ebctx.lineWidth = lw*(1 + 2.5*v);
     ebctx.strokeRect(fx + i*fcw + 2*lw, fy + j*fch + 2*lw, fcw - 4*lw, fch - 4*lw);
   }
   ebctx.strokeStyle = "rgba(120,220,255,0.7)"; ebctx.lineWidth = lw*1.5; ebctx.strokeRect(fx, fy, fw, fh);
@@ -308,6 +457,9 @@ function openEyeBig(){ eyeBigOpen = true; eyeBigEl.classList.remove("hidden"); s
 function closeEyeBig(){ eyeBigOpen = false; eyeBigEl.classList.add("hidden"); }
 document.getElementById("eyebox").addEventListener("click", openEyeBig);
 eyeBigEl.addEventListener("click", closeEyeBig);
+function refreshSceneBtn(){ const b = document.getElementById("sceneBtn"); b.setAttribute("aria-pressed", showScene ? "true" : "false"); b.textContent = showScene ? "Scena sotto: sì" : "Scena sotto: no"; }
+document.getElementById("sceneBtn").addEventListener("click", e => { e.stopPropagation(); showScene = !showScene; try { localStorage.setItem("rete-viva-scena", showScene ? "1" : "0"); } catch(err) {} refreshSceneBtn(); drawEyeBig(); });
+refreshSceneBtn();
 addEventListener("resize", () => { if (eyeBigOpen){ sizeEyeBig(); drawEyeBig(); } });
 
 // udito: 16 bande, con abitudine (conta solo ciò che cambia)
@@ -422,7 +574,7 @@ function balanceSenses(){
 let voiceOn = true, M = null;
 const mh = new Float32Array(N_MOT), mr = new Float32Array(N_MOT), madapt = new Float32Array(N_MOT);
 const mIn = new Float32Array(N_MOT), mInT = new Float32Array(N_MOT), mz = new Float32Array(N_MOT);
-let speakStart = 0, speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
+let speakStart = 0, lastSpeechEnd = -99, speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
 const art = { J:0.45, T:0.5, L:0.2, V:0.05, B:0.05 };     // posizioni attuali dei muscoli della bocca
 let cpgA = 0.6, cpgB = 0, cpgaA = 0, cpgaB = 0, rhythmOn = false, prevOpen = 1, mouthNow = null;
 const rnd4 = () => Math.random()+Math.random()+Math.random()+Math.random()-2;
@@ -553,7 +705,9 @@ function voiceStep(firedNow){
   if (speaking && !was){
     speakStart = net.life;
     if (net.life - lastExternal < 30){ net.replies++; voiceKind = "risposta"; } else { net.babbles++; voiceKind = "lallazione"; }
+    noteVerseStart();
   }
+  if (!speaking && was) lastSpeechEnd = net.life;
   V.voglia += (0.3 - V.voglia)*0.0003; V.voglia = Math.max(0, Math.min(1, V.voglia));  // senza progressi torna calma
 }
 
@@ -598,7 +752,9 @@ function selfListen(firedNow){
   // è la mia voce? quanto di ciò che sento era stato annunciato dal mio gesto
   const selfness = sp > 0.3 ? mineSum/sp : 0;
   if (sp > 0.3) selfSeen = selfSeen*0.9 + selfness*0.1;
-  if (ext > 0.8) lastExternal = net.life;                          // questo suono non l'ho fatto io
+  // questo suono non l'ho fatto io: conta solo se arriva mentre taccio (almeno un attimo dopo aver finito),
+  // altrimenti potrebbe essere l'eco della mia voce che non so ancora riconoscere bene
+  if (ext > 0.8 && !speaking && net.life - lastSpeechEnd > 8){ lastExternal = net.life; noteExternalSound(); }
   // i neuroni dell'udito che scaricano mentre mi riconosco imparano quale gesto produce quel suono
   if (selfness > 0.3){
     let mx = 0; for (let k=0;k<N_MOT;k++) if (e1[k] > mx) mx = e1[k];
@@ -713,6 +869,7 @@ function stepInner(){
     }
   }
   for (const n of firedNow){ n.tr = 1; if (!n.inTr){ n.inTr = true; traced.push(n); } }
+  spikesRecent += firedNow.length; stepsRecent++;
   if (firedNow.length) lastActLife = net.life;
 
   // ---- voce ----
@@ -730,6 +887,8 @@ function stepInner(){
   if (highSurprise > 1.5 && best && net.life - lastBirth > 20){ divide(best); highSurprise = 0; lastBirth = net.life; }
 
   if (net.life % HZ === 0){ decaySynapses(); prune(); }
+  observe();
+  if (net.life % DIARY_EVERY === 0) diaryTick();
   if (net.life % 4 === 0) updateStats();
 }
 
@@ -930,6 +1089,7 @@ function draw(now){
     }
     rateLife = net.life; rateT = now;
   }
+  if (nightOn || diaryOpen) return;          // modalità notte o diario aperto: la rete non si vede, niente disegno
   if (now - lastRender < 1000/Q_FPS[Q] - 2) return;
   // se non sta succedendo niente lo schermo resta com'è: niente da ridisegnare
   const quiet = !staticDirty && settle === 0 && !rings.length && !flights.length && net.life - lastActLife > 8 && now - lastStatic < 20000;
@@ -1061,10 +1221,11 @@ cv.addEventListener("wheel", e => { e.preventDefault(); userZoom = Math.max(0.35
 
 // ======================= statistiche =======================
 const $ = id => document.getElementById(id);
-function fmtLife(t){ const s = Math.floor(t/HZ), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : m ? `${m}m ${s%60}s` : `${s}s`; }
+function fmtLife(t){ const s = Math.floor(t/HZ), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h >= 48 ? `${Math.floor(h/24)}g ${h%24}h` : h ? `${h}h ${m}m` : m ? `${m}m ${s%60}s` : `${s}s`; }
 const mouthBars = [], mouthEl = document.getElementById("mouth");
 for (let k=0;k<N_PITCH;k++){ const b = document.createElement("i"); mouthEl.appendChild(b); mouthBars.push(b); }
 function updateStats(){
+  if (nightOn) return;                      // modalità notte: niente da aggiornare sullo schermo
   for (let k=0;k<N_PITCH;k++){
     mouthBars[k].style.height = (1 + mr[k]*15) + "px";
     mouthBars[k].classList.toggle("on", speaking && mr[k] > 0.2);
@@ -1097,17 +1258,20 @@ function unb64(s){ const b = atob(s), u = new Uint8Array(b.length); for (let i=0
 const r3 = v => Math.round(v*1000)/1000;
 const packF = a => b64(Uint8Array.from(a, v => Math.round(Math.max(0, Math.min(2, v))*127)));
 const unpackF = s => { const u = unb64(s); return u.length === N_MOT*N_AUD ? Float32Array.from(u, v => v/127) : new Float32Array(N_MOT*N_AUD); };
-function serialize(){
-  return JSON.stringify({ v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, babbles:net.babbles, replies:net.replies, nextId:net.nextId,
+function serialize(){ return JSON.stringify(serializeObj()); }
+function serializeObj(){
+  return { v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, babbles:net.babbles, replies:net.replies, nextId:net.nextId,
+    firsts: net.firsts, bornAt: net.bornAt,
     voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2) },
     neurons: net.neurons.map(n => {
       const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
       return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
                w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
-    }) });
+    }) };
 }
 // come erano disposti gli ingressi nelle versioni precedenti (V vista, F fovea, A bande, P altezza, S sagoma, T tatto)
 const OLD_LAYOUTS = {
+  124: [["V",48],["F",24],["A",16],["P",24],["S",12]],              // prima della fovea più fine
   128: [["V",48],["F",24],["A",16],["P",24],["S",12],["T",4]],   // prima che togliessimo il tatto
   104: [["V",48],["A",16],["P",24],["S",12],["T",4]],    // prima della fovea
   92:  [["V",48],["A",16],["P",24],["T",4]],             // prima della sagoma
@@ -1117,7 +1281,8 @@ const NEW_OFF = { V:0, F:OFF_F, A:OFF_A, P:OFF_P, S:OFF_S };   // il tatto non c
 function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
-  const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, babbles:d.babbles|0, replies:d.replies|0, nextId:d.nextId|0, neurons:[], voice:newVoiceMind() };
+  const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, babbles:d.babbles|0, replies:d.replies|0, nextId:d.nextId|0, neurons:[], voice:newVoiceMind(),
+              firsts: (d.firsts && typeof d.firsts === "object") ? d.firsts : null, bornAt: +d.bornAt || null };
   if (d.voice && d.voice.F1){
     const V = n.voice; V.voglia = +d.voice.voglia || 0.5; V.prog = +d.voice.prog || 0;
     V.F1 = unpackF(d.voice.F1); V.F2 = unpackF(d.voice.F2); V.G1 = unpackF(d.voice.G1); V.G2 = unpackF(d.voice.G2);
@@ -1126,7 +1291,12 @@ function deserialize(text){
     const q = new Int8Array(unb64(s.w).buffer);
     const w = new Float32Array(N_IN);
     if (q.length === N_IN) for (let i=0;i<N_IN;i++) w[i] = q[i]/127;
-    else if (OLD_LAYOUTS[q.length]){ let o = 0; for (const [k, n] of OLD_LAYOUTS[q.length]){ if (NEW_OFF[k] !== undefined) for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127; o += n; } }
+    else if (OLD_LAYOUTS[q.length]){ let o = 0; for (const [k, n] of OLD_LAYOUTS[q.length]){
+      if (k === "F" && n === 24){                     // la fovea di prima aveva 6 x 4 zone: ognuna delle nuove 9 x 6 prende quella che la copre
+        // (ridotte in proporzione, così la fovea pesa nel neurone quanto pesava prima)
+        for (let r=0;r<FROWS;r++) for (let c=0;c<FCOLS;c++) w[OFF_F + r*FCOLS + c] = q[o + ((r*4/FROWS)|0)*6 + ((c*6/FCOLS)|0)]/127*Math.sqrt(24/IN_F);
+      } else if (NEW_OFF[k] !== undefined) for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127;
+      o += n; } }
     else throw new Error("file non valido");
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
@@ -1139,15 +1309,21 @@ function deserialize(text){
   n.nextId = Math.max(n.nextId, ...n.neurons.map(m => m.id + 1));
   return n;
 }
+// un solo collegamento alla memoria del telefono, riusato per tutto
+let dbConn = null;
 function idb(){
+  if (dbConn) return Promise.resolve(dbConn);
   return new Promise((ok, ko) => {
     const r = indexedDB.open(DB_NAME, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE);
-    r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error);
+    r.onsuccess = () => { dbConn = r.result; dbConn.onclose = () => { dbConn = null; }; dbConn.onversionchange = () => { dbConn.close(); dbConn = null; }; ok(dbConn); };
+    r.onerror = () => ko(r.error);
   });
 }
-async function idbGet(){ const db = await idb(); return new Promise((ok, ko) => { const r = db.transaction(STORE).objectStore(STORE).get(KEY); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }); }
-async function idbPut(v){ const db = await idb(); return new Promise((ok, ko) => { const t = db.transaction(STORE, "readwrite"); t.objectStore(STORE).put(v, KEY); t.oncomplete = ok; t.onerror = () => ko(t.error); }); }
+async function idbGetK(k){ const db = await idb(); return new Promise((ok, ko) => { const r = db.transaction(STORE).objectStore(STORE).get(k); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }); }
+async function idbPutK(k, v){ const db = await idb(); return new Promise((ok, ko) => { const t = db.transaction(STORE, "readwrite"); t.objectStore(STORE).put(v, k); t.oncomplete = ok; t.onerror = () => ko(t.error); t.onabort = () => ko(t.error); }); }
+async function idbDelK(k){ const db = await idb(); return new Promise((ok, ko) => { const t = db.transaction(STORE, "readwrite"); t.objectStore(STORE).delete(k); t.oncomplete = ok; t.onerror = () => ko(t.error); }); }
+const idbGet = () => idbGetK(KEY), idbPut = v => idbPutK(KEY, v);
 
 function setState(msg){ $("state").textContent = msg; }
 async function save(){
@@ -1156,21 +1332,235 @@ async function save(){
   setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${kb} KB`);
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ net = n; flights = []; pending = []; traced = []; settle = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
   try { const t = localStorage.getItem(LS_KEY); if (t) b = deserialize(t); } catch(e) {}
   const pick = (a && b) ? (a.life >= b.life ? a : b) : (a || b);
+  try { diary = JSON.parse(await idbGetK(KEY_DIARY) || "[]"); } catch(e) { diary = []; }
+  try { moments = JSON.parse(await idbGetK(KEY_MOM) || "[]"); } catch(e) { moments = []; }
+  try { copies = JSON.parse(await idbGetK(KEY_COPIES) || "[]"); } catch(e) { copies = []; }
   if (pick){
     adopt(pick);
+    if (!net.firsts) startDiaryFor(net);             // una rete nata prima del diario
     setState(`ricordo ritrovato · ${net.neurons.length} neuroni`);
     $("wakeMsg").textContent = `Bentornato. Si ricorda tutto: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita.`;
-  } else { reindex(); ensureVisible(); updateStats(); }
+  } else {
+    reindex(); ensureVisible(); updateStats();
+    addMoment("nascita", "È nata: 4 neuroni e nessun ricordo"); await save();
+  }
+  if (!diary.length) diaryRecord();
 }
 setInterval(() => { if (running) save(); }, SAVE_EVERY_MS);   // nel database del telefono; la copia di riserva solo quando chiudi
 document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
 addEventListener("pagehide", saveSync);
+
+// ======================= diario, momenti e copie =======================
+// Il diario annota ogni 5 minuti di vita com'è fatta: neuroni, sinapsi, versi, voglia di parlare...
+// I momenti sono le prime volte e i traguardi: si annotano da soli.
+// Le copie: una al giorno, e una prima di ogni cambiamento grosso (ricominciare, caricare un file, ripristinare).
+// Tutto resta nel telefono, e va anche nel file quando salvi.
+const DIARY_EVERY = HZ*60*5;
+const KEY_DIARY = "diario", KEY_MOM = "momenti", KEY_COPIES = "copie";
+let diary = [], moments = [], copies = [];
+let accVo = 0, accSr = 0, accN = 0;          // voglia e "si riconosce": nel diario va la media dei 5 minuti, non l'istante
+
+function snapRecord(){
+  const N = net.neurons;
+  return { t: Date.now(), l: net.life, n: N.length, s: N.reduce((a, m) => a + (m.stable ? 1 : 0), 0), y: synCount(),
+           b: net.births, p: net.prunes, vb: net.babbles, vr: net.replies,
+           vo: Math.round((accN ? accVo/accN : net.voice.voglia)*100), sr: Math.round((accN ? accSr/accN : selfSeen)*100) };
+}
+function diaryRecord(){
+  const r = snapRecord();
+  const last = diary[diary.length - 1];
+  if (last && last.l === r.l && last.n === r.n && last.y === r.y) return;
+  diary.push(r); thinDiary(); accVo = accSr = accN = 0;
+  idbPutK(KEY_DIARY, JSON.stringify(diary)).catch(() => {});
+  if (typeof diaryRefresh === "function") diaryRefresh();
+}
+// dopo 14 giorni basta un punto all'ora: il diario resta leggero anche dopo mesi
+function thinDiary(){
+  const cut = Date.now() - 14*864e5; if (!diary.length || diary[0].t >= cut) return;
+  const out = []; let lastHour = -1;
+  for (const r of diary){ if (r.t >= cut){ out.push(r); continue; } const h = Math.floor(r.t/36e5); if (h !== lastHour){ out.push(r); lastHour = h; } }
+  diary = out;
+}
+function addMoment(k, text, life){
+  const m = { t: Date.now(), l: life ?? net.life, k, x: text };
+  moments.push(m); if (moments.length > 3000) moments.splice(0, moments.length - 3000);
+  idbPutK(KEY_MOM, JSON.stringify(moments)).catch(() => {});
+  if (typeof showToast === "function") showToast(m);
+  if (typeof diaryRefresh === "function") diaryRefresh();
+}
+// una rete nata prima che ci fosse il diario: le "prime volte" di cui si vede traccia nei numeri le considera già successe
+function startDiaryFor(n){
+  const done = n.babbles + n.replies > 50, F = n.firsts = {};
+  if (n.babbles > 0) F.babble = 1;
+  if (n.replies > 0){ F.reply = 1; F.sound = 1; }
+  if (done){ F.syl = 1; F.vow = { a:1, e:1, i:1, o:1, u:1 }; F.cons = { b:1, d:1, g:1, m:1, n:1 }; F.allv = 1; F.self = 1; }
+  F.nmax = MILE_N.filter(m => n.neurons.length >= m).pop() || 0;
+  F.lmax = MILE_H.filter(h => n.life/HZ/3600 >= h).pop() || 0;
+  F.sight = 1;
+  const prev = net; net = n; reindex(); const G = findGroups(); net = prev; reindex();
+  F.gmax = G.length;
+  addMoment("sistema", `Il diario comincia: aveva già ${n.neurons.length.toLocaleString("it-IT")} neuroni` + (G.length > 1 ? ` in ${G.length} gruppi` : "") + `, ${(n.babbles + n.replies).toLocaleString("it-IT")} versi e ${fmtLife(n.life)} di vita`, n.life);
+}
+
+// ---- le prime volte e i traguardi ----
+const MILE_N = [10, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 7500, 10000];
+const MILE_H = [1, 5, 10, 24, 50, 100, 250, 500, 1000];
+let imitCheck = null, lastExtF = 0, runV = 0, lastV = "", runC = 0, lastC = "";
+function noteVerseStart(){
+  const F = net.firsts;
+  if (voiceKind === "lallazione" && !F.babble){ F.babble = 1; addMoment("voce", "Primo verso"); }
+  if (voiceKind === "risposta"){
+    if (!F.reply){ F.reply = 1; addMoment("voce", "Prima risposta a un suono che non era suo"); }
+    if (lastExtF > 0) imitCheck = { at: net.life + 6, f: lastExtF };
+  }
+}
+function observe(){
+  const F = net.firsts;
+  accVo += net.voice.voglia; accSr += selfSeen; accN++;
+  if (speaking){
+    const say = sayingNow();
+    if (rhythmOn){
+      const c = say[0]; runC = c === lastC ? runC + 1 : 1; lastC = c;
+      if (runC === 6){ F.cons = F.cons || {};
+        if (!F.cons[c]){ F.cons[c] = 1;
+          if (!F.syl){ F.syl = 1; addMoment("voce", `Prima sillaba: «${say}»`); }
+          else addMoment("voce", `Prima volta con la «${c}»: «${say}»`); } }
+    } else {
+      const v = say.slice(-1); runV = v === lastV ? runV + 1 : 1; lastV = v;
+      if (runV === 6){ F.vow = F.vow || {};
+        if (!F.vow[v]){ F.vow[v] = 1; addMoment("voce", `Prima «${v}»`);
+          if (!F.allv && Object.keys(F.vow).length === 5){ F.allv = 1; addMoment("voce", "Ha usato tutte e cinque le vocali"); } } }
+    }
+  } else { runV = runC = 0; }
+  if (imitCheck && net.life >= imitCheck.at){
+    if (speaking && !F.imit){
+      const d = Math.abs(12*Math.log2(voiceF/imitCheck.f));
+      if (d <= 3){ F.imit = 1; addMoment("voce", `Ha rifatto l'altezza di un suono che ha sentito: ${Math.round(imitCheck.f)} Hz, lei ${Math.round(voiceF)} Hz`); }
+    }
+    imitCheck = null;
+  }
+  if (!F.self && selfSeen > 0.5){ F.self = 1; addMoment("udito", "Ha cominciato a riconoscere la propria voce"); }
+  if (net.life % 20 === 0){
+    const nm = MILE_N.filter(m => net.neurons.length >= m).pop() || 0;
+    if (nm > (F.nmax || 0)){ F.nmax = nm; addMoment("crescita", `${nm.toLocaleString("it-IT")} neuroni`); }
+    const hm = MILE_H.filter(h => net.life/HZ/3600 >= h).pop() || 0;
+    if (hm > (F.lmax || 0)){ F.lmax = hm; addMoment("crescita", hm === 1 ? "Un'ora di vita" : hm === 24 ? "24 ore di vita: un giorno intero" : `${hm} ore di vita`); }
+  }
+}
+function noteExternalSound(){
+  if (heardF > 0) lastExtF = heardF;
+  if (!net.firsts.sound){ net.firsts.sound = 1; addMoment("udito", "Ha sentito il primo suono che non era suo"); }
+}
+function noteSight(){
+  if (net.firsts.sight) return;
+  let a = 0; for (let i=0;i<IN_V;i++) a += visIn[i];
+  if (a > 1.5){ net.firsts.sight = 1; addMoment("vista", "Ha visto il primo movimento"); }
+}
+
+// ---- i gruppi di neuroni: chi è collegato forte con chi (propagazione delle etichette) ----
+function findGroups(){
+  const N = net.neurons, n = N.length, idx = new Map(N.map((m, i) => [m.id, i]));
+  const adj = Array.from({length:n}, () => []);
+  N.forEach((a, i) => { for (const sy of a.syn){ if (sy.w < 0.3) continue; const j = idx.get(sy.t); if (j === undefined || j === i) continue; adj[i].push(j, sy.w); adj[j].push(i, sy.w); } });
+  const lab = Int32Array.from({length:n}, (_, i) => i), order = Array.from({length:n}, (_, i) => i), score = new Map();
+  for (let it=0; it<12; it++){
+    for (let i=n-1;i>0;i--){ const j = (Math.random()*(i+1))|0; const t = order[i]; order[i] = order[j]; order[j] = t; }
+    let changed = 0;
+    for (const i of order){
+      const A = adj[i]; if (!A.length) continue;
+      score.clear(); for (let k=0;k<A.length;k+=2){ const l = lab[A[k]]; score.set(l, (score.get(l) || 0) + A[k+1]); }
+      let best = lab[i], bs = score.get(best) || 0;
+      for (const [l, v] of score) if (v > bs){ bs = v; best = l; }
+      if (best !== lab[i]){ lab[i] = best; changed++; }
+    }
+    if (changed < n*0.002) break;
+  }
+  const groups = new Map(); for (let i=0;i<n;i++){ const g = groups.get(lab[i]); if (g) g.push(N[i]); else groups.set(lab[i], [N[i]]); }
+  const min = Math.max(20, Math.round(n*0.01));
+  return [...groups.values()].filter(g => g.length >= min);
+}
+// cosa fa un gruppo: vede, ascolta i bassi, ascolta gli acuti, o un po' tutto
+const BAND_HZ = Array.from({length:IN_A}, (_, b) => Math.sqrt(8*Math.pow(110, b/IN_A) * 8*Math.pow(110, (b+1)/IN_A)) * 48000/2048);
+function describeGroup(g){
+  let vis = 0, aud = 0, lb = 0, wb = 0;
+  for (const m of g){
+    for (let i=0;i<OFF_A;i++) vis += m.w[i]*m.w[i];
+    for (let i=OFF_A;i<N_IN;i++) aud += m.w[i]*m.w[i];
+    for (let b=0;b<IN_A;b++){ const w = Math.max(0, m.w[OFF_A+b]); lb += w*Math.log2(BAND_HZ[b]); wb += w; }
+  }
+  if (vis > 2*aud) return "che vede il movimento";
+  if (aud > 2*vis) return (wb > 0 && Math.pow(2, lb/wb) < 1200) ? "che ascolta i suoni bassi" : "che ascolta i suoni acuti";
+  return "che unisce vista e udito";
+}
+function checkGroups(){
+  const t0 = performance.now(), G = findGroups(), F = net.firsts;
+  net.groupsNow = G.length; net.groupsMs = Math.round(performance.now() - t0);
+  if (G.length > (F.gmax || 0)){
+    // il gruppo più giovane è quello nuovo
+    const young = G.reduce((a, g) => { const b = g.reduce((s, m) => s + m.born, 0)/g.length; return b > a.b ? { g, b } : a; }, { g:null, b:-1 }).g;
+    addMoment("gruppo", G.length === 1 ? `Si è formato il primo gruppo di neuroni, ${describeGroup(young)}` : `È nato un nuovo gruppo di neuroni, ${describeGroup(young)}: ora i gruppi sono ${G.length}`);
+    F.gmax = G.length;
+  }
+}
+function diaryTick(){ diaryRecord(); dailyCopy(); setTimeout(checkGroups, 0); }
+
+// ---- le copie ----
+// ogni copia: { id, t, kind, label, n (neuroni), l (vita), kb }; il contenuto sta sotto "copia:<id>"
+const COPY_KEEP = { giornaliera: 7, sicurezza: 4, manuale: 4 }, COPY_CAP_KB = 30*1024;   // tutte le copie insieme: al massimo 30 MB
+async function makeCopy(kind, label){
+  const data = serialize(), id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const meta = { id, t: Date.now(), kind, label, n: net.neurons.length, l: net.life, kb: Math.round(data.length/1024) };
+  for (let attempt = 0; ; attempt++){
+    try { await idbPutK("copia:" + id, data); break; }
+    catch(e) {
+      // spazio finito: toglie la copia più vecchia e riprova
+      const old = copies.pop();
+      if (!old || attempt >= 2){ try { await idbPutK(KEY_COPIES, JSON.stringify(copies)); } catch(e2) {} setState("spazio pieno: copia non riuscita"); return false; }
+      try { await idbDelK("copia:" + old.id); } catch(e2) {}
+    }
+  }
+  copies.unshift(meta);
+  const seen = {}, keep = [];
+  for (const c of copies){ seen[c.kind] = (seen[c.kind] || 0) + 1; if (seen[c.kind] <= (COPY_KEEP[c.kind] || 4)) keep.push(c); else idbDelK("copia:" + c.id).catch(() => {}); }
+  // quando la rete diventa grande le copie pesano di più: si tolgono le più vecchie, ma le ultime 2 restano sempre
+  let tot = keep.reduce((a, c) => a + c.kb, 0);
+  while (tot > COPY_CAP_KB && keep.length > 2){ const old = keep.pop(); tot -= old.kb; idbDelK("copia:" + old.id).catch(() => {}); }
+  copies = keep;
+  try { await idbPutK(KEY_COPIES, JSON.stringify(copies)); } catch(e) {}
+  if (typeof diaryRefresh === "function") diaryRefresh();
+  return true;
+}
+async function dailyCopy(){
+  const today = new Date().toDateString();
+  if (copies.some(c => c.kind === "giornaliera" && new Date(c.t).toDateString() === today)) return;
+  await makeCopy("giornaliera", "Copia del giorno");
+}
+async function restoreCopy(id){
+  const c = copies.find(c => c.id === id); if (!c) return;
+  const text = await idbGetK("copia:" + id); if (!text) { alert("Questa copia non si trova più."); return; }
+  const n = deserialize(text);
+  await makeCopy("sicurezza", "Prima di ripristinare");
+  if (!n.firsts) n.firsts = {};
+  adopt(n); diaryRecord();
+  addMoment("sistema", `Ripristinata la copia ${fmtWhen(c.t)}: ${c.n.toLocaleString("it-IT")} neuroni`);
+  await save();
+}
+function giornoMese(t){ const d = new Date(t), g = d.getDate(); return (g === 1 ? "1°" : g) + " " + d.toLocaleDateString("it-IT", { month:"long" }); }
+const elide = t => { const g = new Date(t).getDate(); return g === 8 || g === 11; };
+const dataIl = t => (elide(t) ? "l'" : "il ") + giornoMese(t), dataDel = t => (elide(t) ? "dell'" : "del ") + giornoMese(t);
+function fmtWhen(t){ return `${dataDel(t)} alle ${new Date(t).toLocaleTimeString("it-IT", { hour:"2-digit", minute:"2-digit" })}`; }
+// il file contiene tutto: la rete, il diario e i momenti
+function exportAll(){ return JSON.stringify({ ...serializeObj(), diary, moments }); }
+function mergeHistory(d){
+  if (Array.isArray(d.diary)){ const seen = new Set(diary.map(r => r.t)); for (const r of d.diary) if (r && r.t && !seen.has(r.t)) diary.push(r); diary.sort((a, b) => a.t - b.t); idbPutK(KEY_DIARY, JSON.stringify(diary)).catch(() => {}); }
+  if (Array.isArray(d.moments)){ const seen = new Set(moments.map(m => m.t + m.x)); for (const m of d.moments) if (m && m.t && !seen.has(m.t + m.x)) moments.push(m); moments.sort((a, b) => a.t - b.t); idbPutK(KEY_MOM, JSON.stringify(moments)).catch(() => {}); }
+}
 
 // ======================= risveglio e sonno =======================
 let wakeLock = null;
@@ -1190,7 +1580,7 @@ function stopMic(){
 async function startCamera(){
   stopCamera();
   try {
-    camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:320}, height:{ideal:240} } });
+    camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:640}, height:{ideal:480} } });
     video.srcObject = camStream; await video.play();
   } catch(e) { camStream = null; setState("niente vista: permesso camera negato"); }
 }
@@ -1214,6 +1604,7 @@ async function wake(){
   if (micOn && !micStream) await startMic();
   running = true; timer = setInterval(step, 1000/HZ);
   refreshButtons();
+  dailyCopy();
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e) {}
   try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch(e) {}
   if (!$("state").textContent.startsWith("niente")) setState("sveglia");
@@ -1225,6 +1616,7 @@ async function sleep(){
   stopCamera(); stopMic();
   try { if (wakeLock) await wakeLock.release(); } catch(e) {}
   relaxLayout(net.neurons.length > 600 ? 80 : 200);     // dormendo si riorganizza
+  diaryRecord();
   await save();
   $("wakeMsg").textContent = `Dorme. Si ricorda tutto: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita.`;
   $("wake").classList.remove("hidden");
@@ -1254,12 +1646,12 @@ $("camBtn").onclick = async () => { camOn = !camOn; savePrefs(); refreshButtons(
 $("micBtn").onclick = async () => { micOn = !micOn; savePrefs(); refreshButtons(); if (running){ if (micOn) await startMic(); else stopMic(); } };
 $("voice").onclick = () => { voiceOn = !voiceOn; savePrefs(); refreshButtons(); };
 $("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; savePrefs(); if (running && camOn) startCamera(); };
-$("more").onclick = () => $("sheet").classList.remove("hidden");
+$("more").onclick = () => { refreshCopyLine(); $("sheet").classList.remove("hidden"); };
 $("sheetClose").onclick = closeSheet;
 $("sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
 $("exp").onclick = () => {
   closeSheet();
-  const blob = new Blob([serialize()], { type:"application/json" });
+  const blob = new Blob([exportAll()], { type:"application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = `rete-viva-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -1268,16 +1660,424 @@ $("imp").onclick = () => { closeSheet(); $("file").click(); };
 $("file").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   try {
-    const n = deserialize(await f.text());
-    if (!confirm(`Caricare questa rete (${n.neurons.length} neuroni)? Quella attuale verrà sostituita.`)) return;
-    adopt(n); await save();
+    const text = await f.text(), d = JSON.parse(text), n = deserialize(text);
+    if (!confirm(`Caricare questa rete (${n.neurons.length.toLocaleString("it-IT")} neuroni)? Prima viene fatta una copia di quella attuale, che potrai ripristinare dal Diario.`)) return;
+    await makeCopy("sicurezza", "Prima di caricare un file");
+    if (!n.firsts) startDiaryFor(n);
+    adopt(n); mergeHistory(d); diaryRecord();
+    addMoment("sistema", `Caricata da file: ${n.neurons.length.toLocaleString("it-IT")} neuroni, ${fmtLife(n.life)} di vita`);
+    await save();
   } catch(err) { alert("Non riesco a leggere questo file: " + err.message); }
 };
 $("reset").onclick = async () => {
   closeSheet();
-  if (!confirm("Cancellare tutto quello che ha imparato e ripartire da 4 neuroni?")) return;
-  adopt(fresh()); await save();
+  if (!confirm("Ripartire da 4 neuroni? Prima viene fatta una copia di quella attuale, che potrai ripristinare dal Diario. Il diario e i momenti restano.")) return;
+  await makeCopy("sicurezza", "Prima di ricominciare");
+  addMoment("sistema", "Ricominciata da capo");
+  adopt(fresh()); diaryRecord();
+  addMoment("nascita", "È nata di nuovo: 4 neuroni e nessun ricordo");
+  await save();
 };
+
+// ======================= il diario: la pagina =======================
+// Colori dei grafici: blu e arancio, controllati per chi distingue male i colori, sullo sfondo delle schede.
+const C1 = "#3987e5", C2 = "#d95926", GRID = "#232a37", MUTED = "#8a94a6", INK = "#e7ebf2", SURF = "#12151d";
+let diaryOpen = false, diaryTab = "crescita", diaryHome = "crescita", dRange = "7g", dView = "grafici", momFilter = "tutti", momShown = 150, drT = null;
+try { const pr = JSON.parse(localStorage.getItem("rete-viva-diario") || "{}"); if (pr.r) dRange = pr.r; if (pr.v) dView = pr.v; } catch(e) {}
+const KIND = {
+  voce:     { col:"#ff7ac8", icon:'<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18 6.5a7.5 7.5 0 0 1 0 11"/>' },
+  udito:    { col:"#5ad1a0", icon:'<path d="M7 10a5 5 0 0 1 10 0c0 3-3 4-3 7a2.5 2.5 0 0 1-5 0"/><path d="M10 10a2 2 0 0 1 4 0"/>' },
+  vista:    { col:"#ffd34d", icon:'<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/>' },
+  crescita: { col:"#e7ebf2", icon:'<path d="M12 20v-8"/><path d="M12 12c0-4 3-6.5 7-6.5 0 4-3 6.5-7 6.5z"/><path d="M12 14.5C12 11.5 9.5 9 6 9c0 3 2.5 5.5 6 5.5z"/>' },
+  gruppo:   { col:"#7aa7ff", icon:'<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><circle cx="12" cy="16" r="3"/>' },
+  nascita:  { col:"#ffd34d", icon:'<path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4M6.2 6.2l2.6 2.6M15.2 15.2l2.6 2.6M6.2 17.8l2.6-2.6M15.2 8.8l2.6-2.6"/>' },
+  sistema:  { col:"#8a94a6", icon:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>' },
+};
+const MOM_FILTERS = [["tutti","Tutti"],["voce","Voce"],["udito","Udito"],["vista","Vista"],["crescita","Crescita"],["sistema","Sistema"]];
+const svgIcon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${(KIND[k] || KIND.sistema).icon}</svg>`;
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const fmtN = v => v >= 10000 ? (v/1000).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + "k" : Math.round(v).toLocaleString("it-IT");
+const fmtHour = t => new Date(t).toLocaleTimeString("it-IT", { hour:"2-digit", minute:"2-digit" });
+const fmtDayShort = t => new Date(t).toLocaleDateString("it-IT", { day:"numeric", month:"short" });
+function dayLabel(t){
+  const d = new Date(t), today = new Date(); today.setHours(0,0,0,0); const d0 = new Date(d); d0.setHours(0,0,0,0);
+  const diff = Math.round((today - d0)/864e5);
+  return diff === 0 ? "Oggi" : diff === 1 ? "Ieri" : d.toLocaleDateString("it-IT", { weekday:"long", day:"numeric", month:"long" });
+}
+function saveDiaryPrefs(){ try { localStorage.setItem("rete-viva-diario", JSON.stringify({ r:dRange, v:dView })); } catch(e) {} }
+
+function openDiary(tab){ closeSheet(); closeEyeBig(); hideToast(); diaryTab = tab || diaryHome; diaryOpen = true; $("diaryPage").hidden = false; renderDiary(); }
+function closeDiary(){ if (!diaryOpen) return; diaryOpen = false; $("diaryPage").hidden = true; staticDirty = true; }
+function diaryRefresh(){ if (!diaryOpen) return; clearTimeout(drT); drT = setTimeout(renderDiary, 400); }
+function renderDiary(){
+  const first = diary.length ? diary[0].t : Date.now();
+  $("dSub").textContent = (net.bornAt ? `Nata ${dataIl(net.bornAt)}` : `Diario iniziato ${dataIl(first)}`)
+    + ` · ${fmtLife(net.life)} di vita · ${net.neurons.length.toLocaleString("it-IT")} neuroni` + (net.groupsNow > 1 ? ` in ${net.groupsNow} gruppi` : "");
+  for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", b.dataset.tab === diaryTab ? "true" : "false");
+  for (const t of ["crescita","momenti","copie"]) $("tab-" + t).hidden = t !== diaryTab;
+  if (diaryTab === "crescita") renderGrowth(); else if (diaryTab === "momenti") renderMoments(); else renderCopies();
+}
+
+// ---- crescita ----
+const dayStart = t => { const d = new Date(t); d.setHours(0,0,0,0); return d.getTime(); };
+const addDays = (t, k) => { const d = new Date(t); d.setDate(d.getDate() + k); return d.getTime(); };
+const daysBetween = (a, b) => Math.round((dayStart(b) - dayStart(a))/864e5);
+// "7 giorni" sono oggi e i 6 giorni prima, da mezzanotte: così le colonne dei giorni sono giorni interi
+function rangeStart(){
+  const today = dayStart(Date.now());
+  if (dRange === "oggi") return today;
+  if (dRange === "7g") return addDays(today, -6);
+  if (dRange === "30g") return addDays(today, -29);
+  return diary.length ? Math.min(diary[0].t, Date.now() - 36e5) : today;
+}
+function gapOf(recs){
+  const d = []; for (let i=1;i<recs.length;i++) d.push(recs[i].t - recs[i-1].t);
+  d.sort((a, b) => a - b); return Math.max(20*6e4, 3*(d[d.length >> 1] || 0));
+}
+// tra due punti del diario i conti tornano solo se lei è andata avanti di un tempo possibile
+// (niente ripartenze, ripristini o file caricati in mezzo)
+const plausible = (a, b) => b.l >= a.l && b.l - a.l <= (b.t - a.t)/1000*HZ*1.25 + HZ*60 && b.vb >= a.vb && b.vr >= a.vr;
+const fmtFull = v => Math.round(v).toLocaleString("it-IT");
+const fmtK = v => v === 0 ? "0" : (v/1000).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + "k";
+const fmtPct = v => Math.round(v) + "%";
+function renderGrowth(){
+  for (const b of $("rangeSeg").children) b.setAttribute("aria-pressed", b.dataset.r === dRange ? "true" : "false");
+  for (const b of $("viewSeg").children) b.setAttribute("aria-pressed", b.dataset.v === dView ? "true" : "false");
+  const x0 = rangeStart(), x1 = Math.max(Date.now(), x0 + 36e5);
+  const recs = diary.filter(r => r.t >= x0), gap = gapOf(recs);
+  // mentre è sveglia, i grafici finiscono con com'è adesso
+  const lastD = recs[recs.length - 1];
+  if (running && (!lastD || Date.now() - lastD.t > 20000)) recs.push(snapRecord());
+  const join = recs.map((r, i) => i > 0 && r.t - recs[i-1].t <= gap && plausible(recs[i-1], r));
+  let awake = 0, vb = 0, vr = 0;
+  for (let i=1;i<recs.length;i++){ const a = recs[i-1], b = recs[i]; if (!plausible(a, b)) continue; awake += b.l - a.l; vb += b.vb - a.vb; vr += b.vr - a.vr; }
+  const last = recs[recs.length - 1], firstR = recs[0];
+  const st = $("dStats"); st.replaceChildren();
+  const tile = (lab, val, dl) => { const t = el("div", "tile3"); t.append(el("div", "lab", lab), el("div", "val", val), el("div", "dl", dl)); st.append(t); };
+  const dn = last && firstR ? last.n - firstR.n : 0;
+  tile("Neuroni", (last ? last.n : net.neurons.length).toLocaleString("it-IT"), recs.length > 1 ? (dn > 0 ? `+${dn.toLocaleString("it-IT")} nel periodo` : dn < 0 ? `${dn.toLocaleString("it-IT")} nel periodo` : "invariati nel periodo") : "adesso");
+  tile("Versi", (vb + vr).toLocaleString("it-IT"), vr ? `${vr.toLocaleString("it-IT")} erano risposte` : "nel periodo");
+  tile("Sveglia", awake ? fmtLife(awake) : "–", "nel periodo");
+  $("dCharts").hidden = dView !== "grafici"; $("dTable").hidden = dView !== "tabella";
+  if (dView === "tabella"){ renderTable(recs); return; }
+  const box = $("dCharts"); box.replaceChildren();
+  if (recs.length < 2){ box.append(el("div", "empty", "Ancora pochi dati in questo periodo. Il diario segna un punto ogni 5 minuti di vita: torna più tardi, o scegli un periodo più lungo.")); return; }
+  const pts = f => recs.map(r => [r.t, f(r)]);
+  lineCard(box, "Neuroni", [{ name:"tutti", color:C1, pts:pts(r => r.n) }, { name:"stabili", color:C2, pts:pts(r => r.s) }], { x0, x1, join });
+  lineCard(box, "Sinapsi", [{ name:"sinapsi", color:C1, pts:pts(r => r.y) }], { x0, x1, join });
+  barsCard(box, recs, x0, x1);
+  lineCard(box, "Voglia di parlare e riconoscersi", [{ name:"voglia di parlare", color:C1, pts:pts(r => r.vo) }, { name:"si riconosce", color:C2, pts:pts(r => r.sr) }], { x0, x1, join, pct:true });
+}
+function legendOf(series, bars){
+  const lg = el("div", "legend");
+  if (series.length < 2) return lg;                       // una sola serie: basta il titolo
+  for (const s of series){ const sp = el("span"); const k = el("i", bars ? "sq" : ""); k.style.background = s.color; sp.append(k, document.createTextNode(s.name)); lg.append(sp); }
+  return lg;
+}
+function cardShell(box, title, sub, series, bars){
+  const fig = el("figure", "card"), cap = el("figcaption"), h = el("b", null, title);
+  if (sub) h.append(el("span", "sub", sub));
+  cap.append(h, legendOf(series, bars));
+  const plot = el("div", "plot"), cv = el("canvas"), tip = el("div", "tip"), xh = el("div", "xh");
+  plot.tabIndex = 0; plot.setAttribute("role", "group"); plot.setAttribute("aria-label", `${title}: tocca il grafico, o usa le frecce, per leggere i valori`);
+  tip.hidden = true; xh.hidden = true;
+  plot.append(cv, xh, tip); fig.append(cap, plot); box.append(fig);
+  return plot;
+}
+// tacche "tonde": 1, 2, 5, 10… (sempre intere: si contano neuroni e sinapsi)
+function niceTicks(lo, hi){
+  if (hi - lo < 3){ lo = Math.max(0, lo - 2); hi = lo + Math.max(4, hi - lo + 2); }
+  const raw = (hi - lo)/3, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw/p;
+  const step = Math.max(1, (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10)*p);
+  const out = []; for (let v = Math.floor(lo/step)*step; v < hi + step*0.999; v += step) out.push(Math.round(v));
+  return out;
+}
+function timeTicks(x0, x1, pw){
+  const M = 6e4, H = 36e5, D = 864e5, span = x1 - x0, max = Math.max(2, Math.floor(pw/52));
+  const steps = [[10, M], [15, M], [30, M], [1, H], [2, H], [3, H], [6, H], [12, H], [1, D], [2, D], [7, D], [14, D], [30, D], [60, D]];
+  const [k, u] = steps.find(([k, u]) => span/(k*u) <= max) || steps[steps.length - 1];
+  const out = [];
+  if (u === D){
+    // giorni veri del calendario, a mezzanotte; le settimane dal lunedì, i mesi dal primo
+    for (let t = dayStart(x0) < x0 ? addDays(dayStart(x0), 1) : dayStart(x0); t <= x1; t = addDays(t, 1)){
+      const d = new Date(t), dn = daysBetween(0, t) + 3;
+      if (k >= 30 ? d.getDate() === 1 && (k === 30 || d.getMonth() % 2 === 0) : dn % k === 0) out.push([t, fmtDayShort(t)]);
+    }
+  } else {
+    // ore e minuti tondi dell'orologio
+    for (let t = Math.ceil(x0/(10*M))*10*M; t <= x1; t += 10*M){
+      const d = new Date(t), mm = d.getMinutes();
+      if (u === M ? mm % k === 0 : mm === 0 && d.getHours() % k === 0) out.push([t, fmtHour(t)]);
+    }
+  }
+  return out;
+}
+function setupCanvas(plot, H){
+  const cv = plot.querySelector("canvas"), W = Math.max(120, plot.clientWidth), dpr = Math.min(3, devicePixelRatio || 1);
+  cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); cv.style.height = H + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  return { g, W };
+}
+const FONT = "10px system-ui, -apple-system, sans-serif", FONT_B = "600 11px system-ui, -apple-system, sans-serif";
+function yAxis(g, o){
+  g.font = FONT; g.strokeStyle = GRID; g.lineWidth = 1; g.fillStyle = MUTED; g.textAlign = "right"; g.textBaseline = "middle";
+  for (const v of o.ticks){ const y = Math.round(o.Y(v)) + 0.5; g.beginPath(); g.moveTo(o.padL, y); g.lineTo(o.padL + o.pw, y); g.stroke(); g.fillText(o.fmt(v), o.padL - 6, y); }
+}
+function xLabel(g, text, x, y, W){
+  g.font = FONT; g.fillStyle = MUTED; g.textAlign = "center"; g.textBaseline = "top";
+  const w = g.measureText(text).width; g.fillText(text, Math.max(w/2 + 2, Math.min(W - w/2 - 2, x)), y);
+}
+// tocco, trascinamento, mouse e tastiera: tutti portano allo stesso indice
+function interact(plot, count, pick, showAt, hide){
+  let idx = -1, ht = null;
+  const fromX = ev => pick(ev.clientX - plot.getBoundingClientRect().left);
+  const go = i => { const n = count(); if (!n || i < 0) return; idx = Math.min(n - 1, i); showAt(idx); };
+  const off = () => { idx = -1; hide(); };
+  plot.addEventListener("pointerdown", e => { clearTimeout(ht); go(fromX(e)); });
+  plot.addEventListener("pointermove", e => { if (e.pointerType === "mouse" || e.buttons) go(fromX(e)); });
+  plot.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") off(); });
+  plot.addEventListener("pointercancel", off);
+  plot.addEventListener("pointerup", e => { if (e.pointerType !== "mouse"){ clearTimeout(ht); ht = setTimeout(off, 2500); } });
+  plot.addEventListener("keydown", e => {
+    const n = count(), k = e.key;
+    if (k !== "ArrowLeft" && k !== "ArrowRight" && k !== "Home" && k !== "End") return;
+    e.preventDefault(); go(k === "Home" ? 0 : k === "End" ? n - 1 : idx < 0 ? n - 1 : Math.max(0, idx + (k === "ArrowLeft" ? -1 : 1)));
+  });
+  plot.addEventListener("focus", () => { if (idx < 0 && plot.matches(":focus-visible")) go(count() - 1); });
+  plot.addEventListener("blur", off);
+}
+function placeTip(plot, tip, x){ tip.hidden = false; const tw = tip.offsetWidth; tip.style.left = Math.max(0, Math.min(plot.clientWidth - tw, x - tw/2)) + "px"; }
+function tipRow(tip, color, value, name){ const row = el("div", "r"), key = el("i"); key.style.background = color; row.append(key, el("b", null, value), document.createTextNode(name)); tip.append(row); }
+
+// linee: 2 px, interrotte dove lei dormiva; un punto alla fine con il suo valore
+function lineCard(box, title, series, opt){
+  const plot = cardShell(box, title, opt.sub, series, false), tip = plot.querySelector(".tip"), xh = plot.querySelector(".xh");
+  let G = null;
+  const draw = () => {
+    const H = 160, { g, W } = setupCanvas(plot, H);
+    const padL = 40, padR = 56, padT = 10, padB = 22, pw = W - padL - padR, ph = H - padT - padB;
+    let lo = Infinity, hi = 0; for (const s of series) for (const p of s.pts){ lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+    // da zero, tranne quando i valori stanno tutti in alto: allora si guarda da vicino, per vedere la crescita
+    const ticks = opt.pct ? [0, 50, 100] : niceTicks(lo < hi*0.4 ? 0 : lo - (hi - lo)*0.1, hi + (hi - lo)*0.05);
+    const t0 = ticks[0], t1 = ticks[ticks.length - 1];
+    const fmt = opt.pct ? fmtPct : fmtFull, tickFmt = opt.pct ? fmtPct : t1 >= 10000 ? fmtK : fmtFull;
+    const X = t => padL + (t - opt.x0)/(opt.x1 - opt.x0)*pw, Y = v => padT + ph - (v - t0)/(t1 - t0 || 1)*ph;
+    yAxis(g, { ticks, Y, padL, pw, fmt:tickFmt });
+    for (const [t, lab] of timeTicks(opt.x0, opt.x1, pw)){ const x = X(t); if (x > padL + 12 && x < padL + pw - 12) xLabel(g, lab, x, padT + ph + 6, W); }
+    const ends = [];
+    g.lineWidth = 2; g.lineJoin = "round"; g.lineCap = "round";
+    for (const s of series){
+      g.strokeStyle = g.fillStyle = s.color; g.beginPath();
+      const P = s.pts;
+      for (let i=0;i<P.length;i++){
+        const x = X(P[i][0]), y = Y(P[i][1]), joinPrev = !!opt.join[i], joinNext = !!opt.join[i+1];
+        if (joinPrev) g.lineTo(x, y); else g.moveTo(x, y);
+        if (!joinPrev && !joinNext){ g.stroke(); g.beginPath(); g.arc(x, y, 1.6, 0, TAU); g.fill(); g.beginPath(); g.moveTo(x, y); }   // un punto da solo
+      }
+      g.stroke();
+      const e = P[P.length - 1]; if (e) ends.push({ x:X(e[0]), y:Y(e[1]), v:e[1], s });
+    }
+    // il punto finale ha un anello del colore della scheda; il valore accanto solo se non si accavalla
+    ends.sort((a, b) => a.y - b.y);
+    let lastY = -1e9;
+    for (const e of ends){ e.lab = e.y - lastY >= 14; if (e.lab) lastY = e.y; }
+    for (const e of [...ends.filter(e => !e.lab), ...ends.filter(e => e.lab)]){      // quello con il valore scritto resta sopra
+      g.fillStyle = SURF; g.beginPath(); g.arc(e.x, e.y, 6, 0, TAU); g.fill();
+      g.fillStyle = e.s.color; g.beginPath(); g.arc(e.x, e.y, 4, 0, TAU); g.fill();
+    }
+    g.font = FONT_B; g.fillStyle = INK; g.textAlign = "left"; g.textBaseline = "middle";
+    for (const e of ends) if (e.lab) g.fillText(fmt(e.v), e.x + 10, e.y);
+    G = { X, Y, padT, ph, fmt };
+  };
+  const pts0 = series[0].pts;
+  interact(plot, () => pts0.length, px => {
+    if (!G) return -1; let best = 0, bd = 1e9;
+    for (let i=0;i<pts0.length;i++){ const d = Math.abs(G.X(pts0[i][0]) - px); if (d < bd){ bd = d; best = i; } }
+    return best;
+  }, i => {
+    const t = pts0[i][0], x = G.X(t);
+    xh.hidden = false; xh.style.left = x + "px"; xh.style.top = G.padT + "px"; xh.style.height = G.ph + "px";
+    plot.querySelectorAll(".mk").forEach(m => m.remove());
+    tip.replaceChildren(el("div", null, new Date(t).toLocaleString("it-IT", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })));
+    for (const s of series){
+      const p = s.pts[i]; if (!p) continue;
+      const mk = el("div", "mk"); mk.style.background = s.color; mk.style.left = x + "px"; mk.style.top = G.Y(p[1]) + "px"; plot.append(mk);
+      tipRow(tip, s.color, G.fmt(p[1]), s.name);
+    }
+    placeTip(plot, tip, x);
+  }, () => { tip.hidden = true; xh.hidden = true; plot.querySelectorAll(".mk").forEach(m => m.remove()); });
+  draw(); plot._draw = draw;
+}
+
+// versi: colonne impilate (lallazione sotto, risposte sopra), all'ora, al giorno o alla settimana secondo il periodo
+function barsCard(box, recs, x0, x1){
+  const span = x1 - x0, B = span <= 2*864e5 ? 36e5 : span <= 60*864e5 ? 864e5 : 7*864e5;
+  const start = B === 36e5 ? Math.floor(x0/36e5)*36e5 : dayStart(x0);
+  const idxOf = t => B === 36e5 ? Math.floor((t - start)/36e5) : B === 864e5 ? daysBetween(start, t) : Math.floor(daysBetween(start, t)/7);
+  const tOf = k => B === 36e5 ? start + k*36e5 : addDays(start, B === 864e5 ? k : 7*k);
+  const n = Math.max(1, idxOf(x1) + 1);
+  const bab = new Array(n).fill(0), rep = new Array(n).fill(0);
+  for (let i=1;i<recs.length;i++){ const a = recs[i-1], b = recs[i]; if (!plausible(a, b)) continue;
+    const k = Math.min(n - 1, Math.max(0, idxOf(b.t))); bab[k] += b.vb - a.vb; rep[k] += b.vr - a.vr; }
+  const series = [{ name:"lallazione", color:C1 }, { name:"risposte", color:C2 }];
+  const plot = cardShell(box, "Versi", B === 36e5 ? "all'ora" : B === 864e5 ? "al giorno" : "alla settimana", series, true);
+  const tip = plot.querySelector(".tip");
+  const bucketName = k => { const t = tOf(k); return B === 36e5 ? `${fmtHour(t)}–${fmtHour(t + B)}` : B === 864e5 ? new Date(t).toLocaleDateString("it-IT", { weekday:"short", day:"numeric", month:"short" }) : `settimana dal ${fmtDayShort(t)}`; };
+  let G = null, hk = -1;
+  const draw = () => {
+    const H = 160, { g, W } = setupCanvas(plot, H);
+    const padL = 40, padR = 12, padT = 10, padB = 22, pw = W - padL - padR, ph = H - padT - padB;
+    let vmax = 0; for (let k=0;k<n;k++) vmax = Math.max(vmax, bab[k] + rep[k]);
+    const ticks = niceTicks(0, vmax), top = ticks[ticks.length - 1] || 1;
+    const Y = v => padT + ph - v/top*ph, slot = pw/n;
+    yAxis(g, { ticks, Y, padL, pw, fmt: top >= 10000 ? fmtK : fmtFull });
+    // etichette sotto le colonne, quante ne stanno (le ore tonde; per i giorni si parte da oggi)
+    const every = (B === 36e5 ? [1, 2, 3, 4, 6, 12] : [1, 2, 7, 14, 28]).find(m => m*slot >= 46) || 28;
+    for (let k=0;k<n;k++){
+      const t = tOf(k), lab = B === 36e5 ? new Date(t).getHours() % every === 0 : (n - 1 - k) % every === 0;
+      if (lab) xLabel(g, B === 36e5 ? fmtHour(t) : fmtDayShort(t), padL + (k + 0.5)*slot, padT + ph + 6, W);
+    }
+    const bw = Math.max(2, Math.min(24, slot - 4)), rad = Math.min(4, bw/2);
+    for (let k=0;k<n;k++){
+      const tot = bab[k] + rep[k]; if (!tot) continue;
+      const x = padL + (k + 0.5)*slot - bw/2, yb = Y(0), ya = Y(bab[k]), yt = Y(tot);
+      // lallazione dal fondo (angoli tondi solo se in cima non c'è altro); risposte sopra, staccate da 2 px di sfondo
+      if (bab[k]){ g.fillStyle = C1; roundTop(g, x, ya, bw, yb - ya, rep[k] ? 0 : rad); }
+      if (rep[k]){ g.fillStyle = C2; const y0 = bab[k] ? ya - 2 : yb; roundTop(g, x, Math.min(yt, y0 - 1), bw, Math.max(1, y0 - yt), rad); }
+      if (k === hk){ g.fillStyle = "rgba(255,255,255,0.16)"; roundTop(g, x, Math.min(yt, yb - 1), bw, Math.max(1, yb - yt), rad); }   // la colonna toccata si schiarisce
+    }
+    G = { slot, padL };
+  };
+  interact(plot, () => n, px => G ? Math.max(0, Math.min(n - 1, Math.floor((px - G.padL)/G.slot))) : -1, k => {
+    hk = k; draw();
+    tip.replaceChildren(el("div", null, bucketName(k)));
+    tipRow(tip, C1, bab[k].toLocaleString("it-IT"), "lallazione");
+    tipRow(tip, C2, rep[k].toLocaleString("it-IT"), "risposte");
+    placeTip(plot, tip, G.padL + (k + 0.5)*G.slot);
+  }, () => { tip.hidden = true; if (hk >= 0){ hk = -1; draw(); } });
+  draw(); plot._draw = draw;
+}
+function roundTop(g, x, y, w, h, r){
+  if (h <= 0) return; r = Math.min(r, h, w/2);
+  g.beginPath(); g.moveTo(x, y + h); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r); g.lineTo(x + w, y + h); g.closePath(); g.fill();
+}
+function renderTable(recs){
+  const box = $("dTable"); box.replaceChildren();
+  if (!recs.length){ box.append(el("div", "empty", "Nessun punto in questo periodo.")); return; }
+  let rows = recs.slice().reverse(), stepN = 1;
+  if (rows.length > 300){ stepN = Math.ceil(rows.length/300); rows = rows.filter((_, i) => i % stepN === 0); }
+  const wrap = el("div", "tablewrap"), tb = el("table", "dt"), thead = el("thead"), hr = el("tr");
+  for (const h of ["Quando", "Vita", "Neuroni", "Stabili", "Sinapsi", "Lallazione", "Risposte", "Voglia", "Si riconosce"]) hr.append(el("th", null, h));
+  thead.append(hr); tb.append(thead);
+  const body = el("tbody");
+  for (const r of rows){
+    const tr = el("tr");
+    for (const v of [new Date(r.t).toLocaleString("it-IT", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }), fmtLife(r.l), fmtFull(r.n), fmtFull(r.s), fmtFull(r.y), fmtFull(r.vb), fmtFull(r.vr), r.vo + "%", r.sr + "%"]) tr.append(el("td", null, v));
+    body.append(tr);
+  }
+  tb.append(body); wrap.append(tb); box.append(wrap);
+  box.append(el("div", "note2", (stepN > 1 ? `Un punto ogni ${stepN}, per non fare una tabella troppo lunga. ` : "") + "Lallazione e risposte sono i totali da quando è nata."));
+}
+
+// ---- momenti ----
+function renderMoments(){
+  const chips = $("momChips"); chips.replaceChildren();
+  for (const [k, lab] of MOM_FILTERS){ const b = el("button", "chip", lab); b.setAttribute("aria-pressed", k === momFilter ? "true" : "false"); b.onclick = () => { momFilter = k; momShown = 150; renderMoments(); }; chips.append(b); }
+  const list = $("momList"); list.replaceChildren();
+  const want = m => momFilter === "tutti" || m.k === momFilter || (momFilter === "crescita" && (m.k === "gruppo" || m.k === "nascita"));
+  const items = moments.filter(want).slice().reverse();
+  if (!items.length){ list.append(el("div", "empty", momFilter === "tutti" ? "Qui compariranno da sole le sue prime volte: il primo verso, la prima sillaba, la prima risposta, i nuovi gruppi di neuroni." : "Nessun momento di questo tipo, per ora.")); return; }
+  let day = "";
+  for (const m of items.slice(0, momShown)){
+    const d = dayLabel(m.t); if (d !== day){ day = d; list.append(el("div", "day", d)); }
+    const row = el("div", "mom"), ic = el("div", "ic"), tx = el("div", "tx", m.x);
+    ic.innerHTML = svgIcon(m.k); ic.style.color = (KIND[m.k] || KIND.sistema).col;
+    tx.append(el("small", null, `a ${fmtLife(m.l)} di vita`));
+    row.append(el("div", "tm", fmtHour(m.t)), ic, tx); list.append(row);
+  }
+  if (items.length > momShown){ const more = el("button", "more", `Mostra i precedenti (${(items.length - momShown).toLocaleString("it-IT")})`); more.onclick = () => { momShown += 300; renderMoments(); }; list.append(more); }
+}
+
+// ---- copie ----
+const COPY_KIND = { giornaliera:"Copia del giorno", manuale:"Fatta da te", sicurezza:"Di sicurezza" };
+async function renderCopies(){
+  const list = $("copyList"); list.replaceChildren();
+  if (!copies.length) list.append(el("div", "empty", "Ancora nessuna copia. La prima si fa da sola quando la svegli oggi."));
+  for (const c of copies){
+    const row = el("div", "copy"), cx = el("div", "cx");
+    cx.append(el("b", null, c.label || COPY_KIND[c.kind] || "Copia"), el("span", null, `${dayLabel(c.t)}, ${fmtHour(c.t)} · ${c.n.toLocaleString("it-IT")} neuroni · ${fmtLife(c.l)} di vita · ${c.kb >= 1024 ? (c.kb/1024).toLocaleString("it-IT", { maximumFractionDigits:1 }) + " MB" : c.kb + " KB"}`));
+    const b = el("button", null, "Ripristina");
+    b.onclick = async () => {
+      if (!confirm(`Tornare alla copia di ${dayLabel(c.t).toLowerCase()} alle ${fmtHour(c.t)} (${c.n.toLocaleString("it-IT")} neuroni)? Prima viene fatta una copia di com'è adesso.`)) return;
+      b.disabled = true; b.textContent = "Un attimo…";
+      try { await restoreCopy(c.id); } catch(e) { alert("Non sono riuscita a ripristinare questa copia: " + e.message); }
+      renderDiary();
+    };
+    row.append(cx, b); list.append(row);
+  }
+  const mb = v => (v/1024).toLocaleString("it-IT", { maximumFractionDigits:1 }) + " MB";
+  let txt = copies.length ? `Le copie occupano ${mb(copies.reduce((a, c) => a + c.kb, 0))} (al massimo ${mb(COPY_CAP_KB)}).` : "";
+  try {
+    if (navigator.storage && navigator.storage.estimate){ const e = await navigator.storage.estimate();
+      txt += ` In tutto l'app usa ${(e.usage/1048576).toLocaleString("it-IT", { maximumFractionDigits:1 })} MB del telefono.`; }
+  } catch(e) {}
+  $("cSpace").textContent = txt.trim();
+}
+function refreshCopyLine(){
+  const c = copies[0];
+  $("copyLine").textContent = c ? `Copie di sicurezza: ${copies.length} · l'ultima ${dayLabel(c.t).toLowerCase()} alle ${fmtHour(c.t)}` : "Copie di sicurezza: ancora nessuna";
+}
+
+// ---- avvisi dei momenti ----
+const toastQ = []; let toastBusy = false;
+function showToast(m){ if (nightOn || diaryOpen) return; toastQ.push(m); if (toastQ.length > 4) toastQ.splice(0, toastQ.length - 4); if (!toastBusy) nextToast(); }
+function nextToast(){
+  const m = toastQ.shift(), t = $("toast"), box = $("toastIn");
+  if (!m || nightOn || diaryOpen){ toastQ.length = 0; toastBusy = false; return; }
+  toastBusy = true;
+  box.innerHTML = svgIcon(m.k); box.firstChild.style.color = (KIND[m.k] || KIND.sistema).col; box.append(el("span", null, m.x));
+  t.classList.add("show");
+  setTimeout(() => { t.classList.remove("show"); setTimeout(nextToast, 350); }, 4200);
+}
+function hideToast(){ toastQ.length = 0; $("toast").classList.remove("show"); }
+
+// ======================= modalità notte =======================
+// Schermo nero (sugli schermi OLED il nero non consuma), niente disegno della rete, lei continua a vivere.
+// Restano solo un puntino che si accende un po' quando i neuroni lavorano e due numeri, che si spostano piano.
+let nightOn = false, nightT = null, nightIv = null, nightMove = 0, spikesRecent = 0, stepsRecent = 0, actAvg = 0;
+function enterNight(){
+  closeSheet(); closeEyeBig(); closeDiary(); hideToast();
+  nightOn = true; $("night").hidden = false; $("nightExit").hidden = true; nightMove = 0; spikesRecent = stepsRecent = 0;
+  updateNight(); clearInterval(nightIv); nightIv = setInterval(updateNight, 1000);
+}
+function exitNight(){ nightOn = false; clearInterval(nightIv); clearTimeout(nightT); $("night").hidden = true; $("nightExit").hidden = true; staticDirty = true; updateStats(); }
+function updateNight(){
+  if (!nightOn) return;
+  $("ntext").textContent = `${net.neurons.length.toLocaleString("it-IT")} neuroni · ${fmtLife(net.life)}` + (running ? "" : " · dorme");
+  // il puntino si accende quando i neuroni lavorano più del solito per lei, e diventa rosa quando parla
+  const rate = stepsRecent ? spikesRecent/stepsRecent : 0; spikesRecent = stepsRecent = 0;
+  actAvg = actAvg ? actAvg*0.9 + rate*0.1 : rate;
+  const a = running ? Math.min(1, rate/(2*actAvg + 1e-6)) : 0, dot = $("ndot");
+  dot.style.background = speaking && running ? `rgb(${70 + a*90 | 0},${36 + a*30 | 0},${62 + a*60 | 0})` : `rgb(${44 + a*80 | 0},${52 + a*80 | 0},${70 + a*80 | 0})`;
+  // ogni minuto si sposta un poco, così niente resta acceso sempre negli stessi punti dello schermo
+  if (Date.now() - nightMove > 60000){ nightMove = Date.now(); const b = $("nbox"); b.style.left = (25 + Math.random()*50) + "%"; b.style.top = (30 + Math.random()*40) + "%"; }
+}
+$("night").addEventListener("click", e => { if (e.target.id === "nightExit") return; $("nightExit").hidden = false; clearTimeout(nightT); nightT = setTimeout(() => { $("nightExit").hidden = true; }, 5000); });
+$("nightExit").onclick = exitNight;
+addEventListener("keydown", e => { if (e.key !== "Escape") return; if (nightOn) exitNight(); else if (diaryOpen) closeDiary(); });
+
+// ---- comandi del diario ----
+$("openDiary").onclick = () => openDiary();
+$("copyLine").onclick = () => openDiary("copie");
+$("nightBtn").onclick = enterNight;
+$("diaryClose").onclick = closeDiary;
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => { diaryTab = diaryHome = b.dataset.tab; renderDiary(); };
+for (const b of $("rangeSeg").children) b.onclick = () => { dRange = b.dataset.r; saveDiaryPrefs(); renderGrowth(); };
+for (const b of $("viewSeg").children) b.onclick = () => { dView = b.dataset.v; saveDiaryPrefs(); renderGrowth(); };
+$("copyNow").onclick = async () => { $("copyNow").disabled = true; await makeCopy("manuale", "Fatta da te"); $("copyNow").disabled = false; renderCopies(); };
+addEventListener("resize", () => { if (diaryOpen && diaryTab === "crescita") document.querySelectorAll("#dCharts .plot").forEach(p => p._draw && p._draw()); });
+// con il diario aperto i numeri di "adesso" si aggiornano ogni minuto (ma non mentre stai leggendo un valore)
+setInterval(() => { if (diaryOpen && diaryTab === "crescita" && running && !document.querySelector("#tab-crescita .tip:not([hidden])")) renderGrowth(); }, 60000);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 refreshButtons();
