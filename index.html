@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Rete Viva</title>
 <meta name="theme-color" content="#07080c">
-<meta name="description" content="Una rete neurale spiking che cresce: vede, sente, percepisce il tatto e impara mentre vive.">
+<meta name="description" content="Una rete neurale spiking che cresce: vede, sente, parla e impara mentre vive.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -37,12 +37,27 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 #mouth i{flex:1;background:#ff7ac8;min-height:1px;border-radius:1px;opacity:.55}
 #mouth i.on{opacity:1}
 #help{position:absolute;left:10px;right:10px;bottom:6px;font-size:10px;color:#ffffff40;pointer-events:none;text-align:right}
-#pads{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:6px 16px 0}
-.pad{min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--dim);font-size:12px;display:flex;align-items:center;justify-content:center;touch-action:none}
-.pad.on{background:#3a2f0a;border-color:var(--accent);color:var(--accent)}
 #stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;padding-top:7px;border-top:1px solid var(--line);font-size:11px;color:var(--dim);flex:0 0 auto}
 #stats b{display:block;color:var(--text);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
-#bar{display:flex;flex-wrap:wrap;gap:8px;padding:6px 16px 12px}
+#bar{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:8px 16px 10px;border-top:1px solid var(--line)}
+.ctl{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:56px;padding:6px 2px;border-radius:12px;font-size:11px;line-height:1.1;min-width:0}
+.ctl span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctl svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.ctl .slash{display:none}
+.ctl .short{display:none}
+@media (max-width:400px){ .ctl .long{display:none} .ctl .short{display:inline} }
+.ctl.off{color:var(--dim);background:transparent;border-style:dashed}
+.ctl.off .slash{display:inline}
+.ctl:disabled{opacity:.35}
+#sheet{position:fixed;inset:0;z-index:20;background:#000a;display:flex;align-items:flex-end;justify-content:center}
+#sheet.hidden{display:none}
+#sheet .box{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
+#sheet h2{margin:0 0 2px;font-size:13px;color:var(--dim);font-weight:600}
+#sheet button{flex:0 0 auto;min-height:48px;font-size:15px;text-align:left;padding:10px 14px;background:#191d27}
+#sheet .danger{color:#ff8a7a;border-color:#5a2a26;margin-top:6px}
+#sheet .cancel{text-align:center;color:var(--dim);background:transparent}
+.eyeoff{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim);pointer-events:none}
+.note{font-size:10px;color:#ffb27a;margin-top:2px;line-height:1.3}
 button{flex:1 1 auto;min-height:40px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px}
 button:active{transform:scale(.98)}
 button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:650;font-size:15px}
@@ -67,6 +82,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
   <aside id="side">
     <div class="eyebox" id="eyebox" title="tocca per ingrandire">
       <canvas id="eyes" width="64" height="48"></canvas>
+      <span class="eyeoff" id="eyeOff" hidden>camera spenta</span>
       <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="#e7ebf2" stroke-width="1.6"/><path d="M10 10l4.5 4.5" stroke="#e7ebf2" stroke-width="1.8" stroke-linecap="round"/></svg>
     </div>
     <div class="meter"><div class="row">novità<b id="novV">0%</b></div><div class="bar"><i id="novB"></i></div></div>
@@ -74,6 +90,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
     <div class="meter"><div class="row">udito<b id="earTxt">–</b></div><div id="ears"></div></div>
     <div class="meter"><div class="row">voce<b id="voiceKind">in silenzio</b></div><div class="row"><span id="voiceSay"></span><span id="voiceHz"></span></div><div id="mouth"></div></div>
     <div class="meter"><div class="row">si riconosce<b id="selfV">0%</b></div><div class="bar"><i id="selfB" style="background:#c89bff"></i></div></div>
+    <div class="meter"><div class="row">si sente<b id="loudV">–</b></div><div class="bar"><i id="loudB" style="background:#9fe6a0"></i></div><div class="note" id="echoNote" hidden>il telefono sta togliendo l'eco: si sente poco</div></div>
     <div class="meter"><div class="row">voglia di parlare<b id="vogV">50%</b></div><div class="bar"><i id="vogB" style="background:#ff7ac8"></i></div></div>
     <div class="meter"><div class="row">fiato<b id="breV">100%</b></div><div class="bar"><i id="breB" style="background:#7fd6e8;width:100%"></i></div></div>
     <div id="stats">
@@ -94,33 +111,38 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
     <p>Vede solo ciò che si muove: giallo dove la luce aumenta, azzurro dove diminuisce, in proporzione alla luce della stanza. I riquadri gialli sono le 48 zone che coprono tutta la vista. Al centro, nel riquadro azzurro, c'è la fovea: 24 zone più piccole con il doppio dei dettagli. Più movimento c'è, più il riquadro è spesso. Tocca per chiudere.</p>
   </div>
   <div id="wake">
-    <p id="wakeMsg">Parte con pochi neuroni. Vede quello che si muove, sente i suoni e sente il tocco dei quattro pulsanti "tatto". Ha una voce con corde vocali e bocca: all'inizio fa versi spontanei, vocali e sillabe, si ascolta e impara a riconoscersi; poi prova a rifare i suoni che sente. Più impara, più ha voglia di parlare. Quando qualcosa la sorprende, un neurone si divide per impararlo. I neuroni che scaricano insieme creano sinapsi, quelli inutili vengono potati.</p>
+    <p id="wakeMsg">Parte con pochi neuroni. Vede quello che si muove e sente i suoni. Ha una voce con corde vocali e bocca: all'inizio fa versi spontanei, vocali e sillabe, si ascolta e impara a riconoscersi; poi prova a rifare i suoni che sente. Più impara, più ha voglia di parlare. Quando qualcosa la sorprende, un neurone si divide per impararlo. I neuroni che scaricano insieme creano sinapsi, quelli inutili vengono potati.</p>
     <button class="main" id="go">Svegliati</button>
   </div>
 </div>
 
-<div id="pads">
-  <div class="pad" data-q="0">tatto 1</div>
-  <div class="pad" data-q="1">tatto 2</div>
-  <div class="pad" data-q="2">tatto 3</div>
-  <div class="pad" data-q="3">tatto 4</div>
+<nav id="bar" aria-label="Comandi">
+  <button class="ctl" id="sleep"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span>Svegliati</span></button>
+  <button class="ctl" id="camBtn" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h3.5l2-3h7l2 3H21v11H3z"/><circle cx="12" cy="13" r="3.5"/><path class="slash" d="M3.5 3.5l17 17"/></svg><span>Camera</span></button>
+  <button class="ctl" id="flip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11a7 7 0 0 1 12.5-4.3M19 13a7 7 0 0 1-12.5 4.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg><span>Gira</span></button>
+  <button class="ctl" id="micBtn" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M3.5 3.5l17 17"/></svg><span><span class="long">Microfono</span><span class="short">Micro</span></span></button>
+  <button class="ctl" id="voice" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="slash" d="M3.5 3.5l17 17"/></svg><span>Voce</span></button>
+  <button class="ctl" id="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/></svg><span>Altro</span></button>
+</nav>
+<div id="sheet" class="hidden">
+  <div class="box" role="dialog" aria-label="La rete">
+    <h2>La rete</h2>
+    <button id="exp">Salva su file</button>
+    <button id="imp">Carica da file</button>
+    <button id="reset" class="danger">Ricomincia da capo</button>
+    <button id="sheetClose" class="cancel">Chiudi</button>
+  </div>
 </div>
-
-<div id="bar">
-  <button id="sleep">Dormi</button>
-  <button id="voice">Voce: sì</button>
-  <button id="flip">Gira camera</button>
-  <button id="exp">Salva file</button>
-  <button id="imp">Carica file</button>
-  <button id="reset">Ricomincia</button>
-  <input type="file" id="file" accept=".json,application/json">
-</div>
+<input type="file" id="file" accept=".json,application/json">
 
 <script>
 "use strict";
 // ======================= parametri =======================
-const IN_V = 48, IN_F = 24, IN_A = 16, IN_P = 24, IN_S = 12, IN_T = 4;  // vista, fovea, bande dell'udito, altezza, sagoma del suono, tatto
-const OFF_F = IN_V, OFF_A = OFF_F + IN_F, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, OFF_T = OFF_S + IN_S, N_IN = OFF_T + IN_T;   // 128 ingressi sensoriali
+const IN_V = 48, IN_F = 24, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, fovea, bande dell'udito, altezza, sagoma del suono
+const OFF_F = IN_V, OFF_A = OFF_F + IN_F, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 124 ingressi sensoriali
+// l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
+const EAR_F = Array.from({length:IN_P}, (_, k) => 80 * Math.pow(1500/80, k/(IN_P-1)));
+const LOG_EF = EAR_F.map(Math.log2);
 const MAX_NEURONS = 10000;        // tetto di sicurezza per il salvataggio (circa 3,5 MB)
 // il limite vero è la fatica: la rete cresce finché il telefono riesce a calcolarla in tempo
 const MIN_NEURONS = 4;            // non scende mai sotto
@@ -194,7 +216,7 @@ const fvctx = fovEl.getContext("2d"), fvImg = fvctx.createImageData(FW, FH);
 const retW = {}, retF = {};                              // stato delle due retine: immagine precedente e rumore
 let facing = "environment", camStream = null, micStream = null;
 let audioCtx = null, analyser = null, freq = null, master = null;
-const bandBase = new Float32Array(IN_A), touch = new Float32Array(IN_T), held = [false,false,false,false];
+const bandBase = new Float32Array(IN_A);
 
 // vista a eventi: conta solo i punti che cambiano, come una retina.
 // La retina risponde ai cambiamenti di luce in proporzione (in logaritmo), non in assoluto: così vede allo stesso modo
@@ -295,13 +317,20 @@ let heardF = 0, heardClar = 0;
 const sin = new Float32Array(IN_S);          // sagoma del suono sentito (è ciò che distingue una vocale dall'altra)
 const pin = new Float32Array(IN_P);          // altezza sentita, prima del bilanciamento dei sensi
 const tbuf = new Float32Array(2048);
+// L'orecchio si adatta al volume, come fanno le cellule ciliate e i muscoli dell'orecchio medio: stima il rumore di fondo
+// e conta i suoni rispetto a quello, non in assoluto. Così funziona sia con un microfono forte sia con uno debole.
+let noiseRms = 0.002, micRms = 0, shapeFloor = 60, selfDb = 0, echoOn = false;
 // altezza del suono: l'autocorrelazione trova dopo quanto l'onda si ripete
 function detectPitch(){
   analyser.getFloatTimeDomainData(tbuf);
   // usa un campione su due: per voci fino a 2000 Hz basta, e costa 4 volte meno
   const sr = audioCtx.sampleRate / 2, L = 512;
   let e0 = 0; for (let i=0;i<L;i++){ const a = tbuf[2*i]; e0 += a*a; }
-  if (Math.sqrt(e0/L) < 0.01) return [0, 0];
+  const rms = Math.sqrt(e0/L); micRms = rms;
+  // il rumore di fondo: si abbassa subito nel silenzio, si alza piano (raddoppia in circa 10 secondi)
+  noiseRms = rms < noiseRms ? 0.8*noiseRms + 0.2*rms : noiseRms*1.0035;
+  if (noiseRms < 1e-5) noiseRms = 1e-5;
+  if (rms < 2*noiseRms || rms < 1e-4) return [0, 0];               // non si distingue dal fondo (almeno 6 dB sopra)
   const minLag = 1, maxLag = Math.min(500, Math.ceil(sr/75));      // parte da ritardi minimi per non saltare il primo periodo
   const r = new Float32Array(maxLag + 2);
   for (let l=minLag; l<=maxLag+1; l++){
@@ -310,7 +339,7 @@ function detectPitch(){
   }
   let l = minLag; while (l < maxLag && r[l] > 0.3) l++;             // supera il primo picco (ritardo zero)
   let best = 0; for (let k=l; k<=maxLag; k++) if (r[k] > best) best = r[k];
-  if (best < 0.7) return [0, 0];                                    // suono non intonato (rumore, voce parlata confusa)
+  if (best < 0.6) return [0, 0];                                    // suono non intonato (rumore, voce parlata confusa)
   let k = Math.max(l, 2); while (k < maxLag && !(r[k] >= 0.9*best && r[k] >= r[k-1] && r[k] >= r[k+1])) k++;
   const a = r[k-1], b = r[k], c = r[k+1], shift = (a - c) / (2*(a - 2*b + c) || 1);
   const f = sr / (k + Math.max(-0.5, Math.min(0.5, shift)));
@@ -320,8 +349,8 @@ function detectPitch(){
 function encodePitch(f, clar){
   for (let k=0;k<IN_P;k++){
     if (!f){ x[OFF_P+k] = pin[k] = 0; continue; }
-    const d = Math.log2(f) - LOG_PF[k];
-    x[OFF_P+k] = pin[k] = clar * Math.exp(-d*d / (2*0.12*0.12));
+    const d = Math.log2(f) - LOG_EF[k];
+    x[OFF_P+k] = pin[k] = clar * Math.exp(-d*d / (2*0.14*0.14));
   }
 }
 // la sagoma del suono: quanto è forte a ogni altezza tra 200 e 4000 Hz, indipendentemente dal volume.
@@ -345,7 +374,9 @@ function shapeFromBytes(fq, sr, fftSize, f0, out){
       v[b] = peakAt((fa+fz)/2, (fz-fa)/2); if (v[b] > mx) mx = v[b];
     }
   }
-  if (mx < 90){ v.fill(0); return v; }                 // troppo debole: nessuna sagoma
+  // anche qui conta il fondo: la sagoma c'è solo se il suono sta ben sopra il rumore dello spettro (circa 7 dB)
+  shapeFloor = mx < shapeFloor ? 0.8*shapeFloor + 0.2*mx : shapeFloor + 0.05;
+  if (mx < shapeFloor + 25 || mx < 20){ v.fill(0); return v; }
   const BPD = 255/70; mx = 0;
   for (let b=0;b<IN_S;b++){ const fc = S_LO*Math.pow(S_HI/S_LO, (b+0.5)/IN_S); v[b] += 6*Math.log2(fc/S_LO)*BPD; if (v[b] > mx) mx = v[b]; }
   const DR = 30*BPD;
@@ -357,6 +388,8 @@ function encodeShape(){ let m = 0; for (let b=0;b<IN_S;b++) m += sin[b]; m /= IN
 function readHearing(){
   if (!analyser){ for (let i=0;i<IN_A;i++){ x[OFF_A+i]=0; earBars[i].style.height="1px"; } heardF = 0; heardClar = 0; encodePitch(0,0); sin.fill(0); encodeShape(); return; }
   [heardF, heardClar] = detectPitch(); encodePitch(heardF, heardClar);
+  // quanto forte sente la propria voce: mentre parla, di quanti decibel il microfono sta sopra il fondo
+  if (speaking && net.life - speakStart > 2) selfDb = 0.9*selfDb + 0.1*Math.max(0, 20*Math.log10(micRms/noiseRms));
   analyser.getByteFrequencyData(freq);
   shapeFromBytes(freq, audioCtx.sampleRate, analyser.fftSize, heardF, sin); encodeShape();
   const lo = 8, hi = Math.min(freq.length - 1, 880);
@@ -368,12 +401,10 @@ function readHearing(){
     x[OFF_A+b] = v; earBars[b].style.height = (1 + v*19) + "px";
   }
 }
-function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i]*0.8; x[OFF_T+i] = touch[i]; } }
-
-// ogni senso pesa allo stesso modo: 48 pixel di vista non coprono 4 punti di tatto
+// ogni senso pesa allo stesso modo: i 72 punti della vista non coprono i 16 delle bande dell'udito
 function balanceSenses(){
   // la sagoma del suono (la vocale) pesa un po' di più dell'altezza: come i bambini, conta più cosa si dice che su che nota
-  for (const [a, b, on, len] of [[0, OFF_A, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 1], [OFF_S, OFF_T, 0.05, 1.5], [OFF_T, N_IN, 0.2, 1]]){
+  for (const [a, b, on, len] of [[0, OFF_A, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 1], [OFF_S, N_IN, 0.05, 1.5]]){
     let s = 0; for (let i=a;i<b;i++) s += x[i]*x[i]; s = Math.sqrt(s);
     const k = s > on ? Math.min(len, s) / s : 0;   // attivo: lunghezza fino a 1 (1,5 per la sagoma); troppo debole: zero
     for (let i=a;i<b;i++) x[i] *= k;
@@ -391,7 +422,7 @@ function balanceSenses(){
 let voiceOn = true, M = null;
 const mh = new Float32Array(N_MOT), mr = new Float32Array(N_MOT), madapt = new Float32Array(N_MOT);
 const mIn = new Float32Array(N_MOT), mInT = new Float32Array(N_MOT), mz = new Float32Array(N_MOT);
-let speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
+let speakStart = 0, speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
 const art = { J:0.45, T:0.5, L:0.2, V:0.05, B:0.05 };     // posizioni attuali dei muscoli della bocca
 let cpgA = 0.6, cpgB = 0, cpgaA = 0, cpgaB = 0, rhythmOn = false, prevOpen = 1, mouthNow = null;
 const rnd4 = () => Math.random()+Math.random()+Math.random()+Math.random()-2;
@@ -520,6 +551,7 @@ function voiceStep(firedNow){
     M.noiseG.gain.setTargetAtTime((0.25*k.breath + 0.8*burst)*voiceAmp, t, 0.012);
   }
   if (speaking && !was){
+    speakStart = net.life;
     if (net.life - lastExternal < 30){ net.replies++; voiceKind = "risposta"; } else { net.babbles++; voiceKind = "lallazione"; }
   }
   V.voglia += (0.3 - V.voglia)*0.0003; V.voglia = Math.max(0, Math.min(1, V.voglia));  // senza progressi torna calma
@@ -546,6 +578,8 @@ function selfListen(firedNow){
   rHist.push(g); if (rHist.length > 10) rHist.shift();
   for (let p=0;p<IN_P;p++) aud[p] = pin[p]; for (let b=0;b<IN_S;b++) aud[IN_P+b] = sin[b];
   const d = rHist[0]; for (let k=0;k<N_MOT;k++) e2[k] = 0.93*e2[k] + 0.07*d[k];
+  // senza microfono non può sentirsi: non impara niente sulla propria voce (altrimenti imparerebbe che è muta)
+  if (!analyser){ ep.cur = null; ep.on = false; return; }
   let act = 0, n2 = 0.05; for (let k=0;k<N_MOT;k++){ act += e1[k] + e2[k]; n2 += e1[k]*e1[k] + e2[k]*e2[k]; }
   P1.fill(0); P2.fill(0);
   let E = 0, Eold = 0, sp = 0, mineSum = 0, ext = 0;
@@ -592,7 +626,7 @@ function selfListen(firedNow){
     if (!ep.on && ep.cur.end >= 0 && net.life - ep.cur.end >= 40) closeEpisode();
   }
 }
-function audioShare(n){ let s = 0; for (let i=OFF_A;i<OFF_T;i++) s += n.w[i]*n.w[i]; return s; }
+function audioShare(n){ let s = 0; for (let i=OFF_A;i<N_IN;i++) s += n.w[i]*n.w[i]; return s; }
 
 // ======================= la vita: un passo =======================
 let surprise = 0, novelty = 0, betrayal = 0, highSurprise = 0, lastBirth = -999, running = false, timer = null, lastStepAt = performance.now();
@@ -613,7 +647,7 @@ function step(){
 }
 function stepInner(){
   net.life++; lastStepAt = performance.now();
-  readVision(); readHearing(); readTouch();
+  readVision(); readHearing();
   balanceSenses();
   let e = 0; for (let i=0;i<N_IN;i++) e += x[i]*x[i]; e = Math.sqrt(e);
   const N = net.neurons;
@@ -1025,15 +1059,6 @@ const up = e => { ptrs.delete(e.pointerId); };
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 cv.addEventListener("wheel", e => { e.preventDefault(); userZoom = Math.max(0.35, Math.min(4, userZoom * (1 + e.deltaY*0.001))); fitCamera(1); staticDirty = true; }, { passive:false });
 
-// tatto: i quattro pulsanti
-for (const pad of document.querySelectorAll(".pad")){
-  const q = +pad.dataset.q;
-  const on = e => { e.preventDefault(); held[q] = true; pad.classList.add("on"); };
-  const off = () => { held[q] = false; pad.classList.remove("on"); };
-  pad.addEventListener("pointerdown", on); pad.addEventListener("pointerup", off);
-  pad.addEventListener("pointercancel", off); pad.addEventListener("pointerleave", off);
-}
-
 // ======================= statistiche =======================
 const $ = id => document.getElementById(id);
 function fmtLife(t){ const s = Math.floor(t/HZ), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : m ? `${m}m ${s%60}s` : `${s}s`; }
@@ -1049,6 +1074,8 @@ function updateStats(){
   $("voiceHz").textContent = speaking ? `${Math.round(voiceF)} Hz` : "";
   const vg = Math.round(net.voice.voglia*100); $("vogV").textContent = vg + "%"; $("vogB").style.width = vg + "%";
   const sv = Math.round(selfSeen*100); $("selfV").textContent = sv + "%"; $("selfB").style.width = sv + "%";
+  $("loudV").textContent = selfDb > 0.5 ? "+" + Math.round(selfDb) + " dB" : "–"; $("loudB").style.width = Math.min(100, selfDb/30*100) + "%";
+  $("echoNote").hidden = !echoOn;
   const br = Math.round(breath*100); $("breV").textContent = br + "%"; $("breB").style.width = br + "%";
   $("earTxt").textContent = heardF ? `${Math.round(heardF)} Hz` : "–";
   $("sN").textContent = net.neurons.length;
@@ -1079,13 +1106,14 @@ function serialize(){
                w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
     }) });
 }
-// come erano disposti gli ingressi nelle versioni precedenti (V vista, A bande, P altezza, S sagoma, T tatto)
+// come erano disposti gli ingressi nelle versioni precedenti (V vista, F fovea, A bande, P altezza, S sagoma, T tatto)
 const OLD_LAYOUTS = {
+  128: [["V",48],["F",24],["A",16],["P",24],["S",12],["T",4]],   // prima che togliessimo il tatto
   104: [["V",48],["A",16],["P",24],["S",12],["T",4]],    // prima della fovea
   92:  [["V",48],["A",16],["P",24],["T",4]],             // prima della sagoma
   68:  [["V",48],["A",16],["T",4]],                      // prima dell'altezza
 };
-const NEW_OFF = { V:0, F:OFF_F, A:OFF_A, P:OFF_P, S:OFF_S, T:OFF_T };
+const NEW_OFF = { V:0, F:OFF_F, A:OFF_A, P:OFF_P, S:OFF_S };   // il tatto non c'è più: i suoi pesi si lasciano
 function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
@@ -1098,7 +1126,7 @@ function deserialize(text){
     const q = new Int8Array(unb64(s.w).buffer);
     const w = new Float32Array(N_IN);
     if (q.length === N_IN) for (let i=0;i<N_IN;i++) w[i] = q[i]/127;
-    else if (OLD_LAYOUTS[q.length]){ let o = 0; for (const [k, n] of OLD_LAYOUTS[q.length]){ for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127; o += n; } }
+    else if (OLD_LAYOUTS[q.length]){ let o = 0; for (const [k, n] of OLD_LAYOUTS[q.length]){ if (NEW_OFF[k] !== undefined) for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127; o += n; } }
     else throw new Error("file non valido");
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
@@ -1146,9 +1174,21 @@ addEventListener("pagehide", saveSync);
 
 // ======================= risveglio e sonno =======================
 let wakeLock = null;
-async function startCamera(){
+function stopCamera(){
   if (camStream) camStream.getTracks().forEach(t => t.stop());
-  camStream = null; retW.prev = retF.prev = null; retW.noise = retF.noise = undefined;
+  camStream = null; video.srcObject = null; retW.prev = retF.prev = null; retW.noise = retF.noise = undefined;
+  ectx.fillStyle = "#000"; ectx.fillRect(0, 0, VW, VH); visIn.fill(0); drawEyeBig();
+  for (let i=0;i<OFF_A;i++) x[i] = 0;
+}
+let micSrc = null;
+function stopMic(){
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  micStream = null; analyser = null;
+  if (micSrc){ try { micSrc.disconnect(); } catch(e) {} micSrc = null; }
+  noiseRms = 0.002; shapeFloor = 60; echoOn = false;
+}
+async function startCamera(){
+  stopCamera();
   try {
     camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:320}, height:{ideal:240} } });
     video.srcObject = camStream; await video.play();
@@ -1157,9 +1197,11 @@ async function startCamera(){
 async function startMic(){
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
-    const src = audioCtx.createMediaStreamSource(micStream);
+    micSrc = audioCtx.createMediaStreamSource(micStream);
     analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.5;
-    freq = new Uint8Array(analyser.frequencyBinCount); src.connect(analyser);
+    freq = new Uint8Array(analyser.frequencyBinCount); micSrc.connect(analyser);
+    // il telefono rispetta la richiesta di non togliere l'eco? se no, lei sentirà poco la propria voce
+    try { const t = micStream.getAudioTracks()[0]; echoOn = !!(t && t.getSettings && t.getSettings().echoCancellation === true); } catch(e) { echoOn = false; }
   } catch(e) { setState("niente udito: permesso microfono negato"); }
 }
 async function wake(){
@@ -1168,8 +1210,10 @@ async function wake(){
   ensureVoice();
   try { await audioCtx.resume(); } catch(e) {}
   $("wake").classList.add("hidden");
-  await startCamera(); if (!micStream) await startMic();
+  if (camOn) await startCamera(); else stopCamera();
+  if (micOn && !micStream) await startMic();
   running = true; timer = setInterval(step, 1000/HZ);
+  refreshButtons();
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e) {}
   try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch(e) {}
   if (!$("state").textContent.startsWith("niente")) setState("sveglia");
@@ -1178,30 +1222,49 @@ async function sleep(){
   if (!running) return;
   running = false; clearInterval(timer);
   speaking = false; if (M){ M.voice.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); M.noiseG.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); }
-  if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null;
-  if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; analyser = null;
+  stopCamera(); stopMic();
   try { if (wakeLock) await wakeLock.release(); } catch(e) {}
   relaxLayout(net.neurons.length > 600 ? 80 : 200);     // dormendo si riorganizza
   await save();
   $("wakeMsg").textContent = `Dorme. Si ricorda tutto: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita.`;
   $("wake").classList.remove("hidden");
+  refreshButtons();
 }
 document.addEventListener("visibilitychange", async () => {
   if (!document.hidden && running && "wakeLock" in navigator){ try { wakeLock = await navigator.wakeLock.request("screen"); } catch(e) {} }
 });
 
 // ======================= pulsanti =======================
+// le scelte degli interruttori restano anche quando riapri l'app (solo su questo telefono)
+const PREF_KEY = "rete-viva-scelte";
+let camOn = true, micOn = true;
+try { const pr = JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); if (pr.cam === false) camOn = false; if (pr.mic === false) micOn = false; if (pr.voice === false) voiceOn = false; if (pr.facing) facing = pr.facing; } catch(e) {}
+function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ cam:camOn, mic:micOn, voice:voiceOn, facing })); } catch(e) {} }
+function setToggle(id, on){ const b = $(id); b.classList.toggle("off", !on); b.setAttribute("aria-pressed", on ? "true" : "false"); }
+function refreshButtons(){
+  setToggle("camBtn", camOn); setToggle("micBtn", micOn); setToggle("voice", voiceOn);
+  $("flip").disabled = !camOn;
+  $("sleep").querySelector("span").textContent = running ? "Dormi" : "Svegliati";
+  $("eyeOff").hidden = camOn || !running;
+}
+function closeSheet(){ $("sheet").classList.add("hidden"); }
 $("go").onclick = wake;
-$("sleep").onclick = sleep;
-$("voice").onclick = () => { voiceOn = !voiceOn; $("voice").textContent = "Voce: " + (voiceOn ? "sì" : "no"); };
-$("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; if (running) startCamera(); };
+$("sleep").onclick = () => running ? sleep() : wake();
+$("camBtn").onclick = async () => { camOn = !camOn; savePrefs(); refreshButtons(); if (running){ if (camOn) await startCamera(); else stopCamera(); } };
+$("micBtn").onclick = async () => { micOn = !micOn; savePrefs(); refreshButtons(); if (running){ if (micOn) await startMic(); else stopMic(); } };
+$("voice").onclick = () => { voiceOn = !voiceOn; savePrefs(); refreshButtons(); };
+$("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; savePrefs(); if (running && camOn) startCamera(); };
+$("more").onclick = () => $("sheet").classList.remove("hidden");
+$("sheetClose").onclick = closeSheet;
+$("sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
 $("exp").onclick = () => {
+  closeSheet();
   const blob = new Blob([serialize()], { type:"application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = `rete-viva-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
-$("imp").onclick = () => $("file").click();
+$("imp").onclick = () => { closeSheet(); $("file").click(); };
 $("file").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   try {
@@ -1211,11 +1274,13 @@ $("file").onchange = async e => {
   } catch(err) { alert("Non riesco a leggere questo file: " + err.message); }
 };
 $("reset").onclick = async () => {
+  closeSheet();
   if (!confirm("Cancellare tutto quello che ha imparato e ripartire da 4 neuroni?")) return;
   adopt(fresh()); await save();
 };
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+refreshButtons();
 reindex();
 load();
 </script>
