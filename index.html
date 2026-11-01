@@ -157,13 +157,15 @@ table.dt{width:100%;border-collapse:collapse;font-size:11px}
 .hleg{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;font-size:12px;color:var(--dim)}
 .hleg div{display:flex;align-items:center;gap:7px;min-width:0}
 .hleg i{flex:0 0 auto;width:9px;height:9px;border-radius:2px}
-.hleg b{margin-left:auto;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.hleg b{margin-left:auto;padding-left:6px;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .hgrid > div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
 .hgrid .lab{font-size:11px;color:var(--dim)}
-.hgrid .val{font-size:17px;font-weight:650;margin-top:2px;white-space:nowrap}
+.hgrid .val{font-size:17px;font-weight:650;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hgrid .sub{font-size:11px;color:var(--dim);margin-top:1px}
 .hnote{font-size:12px;color:var(--dim);line-height:1.45}
+.hact{display:flex;gap:8px}
+.hact button{flex:1;min-height:46px;font-size:14px}
 .hfoot{padding:2px 2px 8px}
 /* avvisi dei momenti */
 .toast{position:fixed;z-index:35;top:calc(env(safe-area-inset-top) + 48px);left:calc(clamp(140px, 36vw, 240px) + 8px);right:12px;display:flex;justify-content:center;pointer-events:none}
@@ -328,6 +330,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
       <div class="hleg" id="hLeg"></div>
     </div>
     <div class="hgrid" id="hMore"></div>
+    <div class="hact"><button id="hCopy">Copia il riassunto</button><button id="hSave">Scarica i dati</button></div>
     <div class="hnote hfoot">Ogni passo ha a disposizione 50 millesimi di secondo, cioè 20 passi al secondo. Se lei ne usa più di 18, la rete è al limite del telefono: i neuroni nuovi prendono il posto dei meno utili e non cresce più. Il resto del tempo serve al disegno e al telefono. Con il Risparmio energetico il telefono va più piano.</div>
   </div>
 </section>
@@ -342,6 +345,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
+const VERSIONE = 19;                // la versione dell'app (la stessa della memoria del service worker)
 const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
 const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
@@ -856,7 +860,7 @@ let traced = [];           // neuroni che hanno scaricato da poco (traccia STDP 
 // la salute: quanto tempo prende ogni parte del passo, quanto arrivano in ritardo i passi, quanto costa il disegno.
 // Si raccoglie in finestre di 2 secondi (le stesse del controllo della grafica) e si guardano le ultime 10, cioè 20 secondi
 const newHW = () => ({ n:0, vis:0, ear:0, net:0, learn:0, voice:0, rest:0, max:0, fired:0, traced:0, ticks:0, late:0, draw:0, frames:0, win:0 });
-let HW = newHW(), healthHist = [], lastTick = 0;
+let HW = newHW(), healthHist = [], healthLog = [], lastTick = 0;
 function step(){
   const t0 = performance.now();
   if (lastTick){ HW.ticks++; HW.late += Math.max(0, t0 - lastTick - 1000/HZ); }
@@ -1181,6 +1185,7 @@ function draw(now){
       rateAvg /= rateHist.length; drawShare /= rateHist.length;
       if (gfxMode === "auto") adaptQ(now);
       HW.win = win; HW.draw = drawSum; healthHist.push(HW); if (healthHist.length > 10) healthHist.shift();
+      healthLog.push({ ...HW, t: Date.now(), Q, neuroni: net.neurons.length }); if (healthLog.length > 150) healthLog.shift();
     } else if (!running){ rateHist = []; healthHist = []; warmed = false; }
     HW = newHW(); drawSum = 0; rateLife = net.life; rateT = now;
   }
@@ -2179,7 +2184,7 @@ function nextToast(){
 function hideToast(){ toastQ.length = 0; $("toast").classList.remove("show"); }
 
 // ======================= salute =======================
-const PARTS = [["vis","vista","#3987e5"],["ear","udito","#d95926"],["net","neuroni","#199e70"],["learn","apprendimento","#c98500"],["voice","voce","#d55181"],["rest","crescita e schermo","#008300"]];
+const PARTS = [["vis","vista","#3987e5"],["ear","udito","#d95926"],["net","neuroni","#199e70"],["learn","apprendimento","#c98500"],["voice","voce","#d55181"],["rest","il resto","#008300"]];
 let healthOpen = false, healthIv = null;
 const nf1 = v => v.toLocaleString("it-IT", { maximumFractionDigits:1 });
 function healthSum(){
@@ -2220,12 +2225,52 @@ function renderHealth(){
   const more = $("hMore"); more.replaceChildren();
   const box = (lab, val, sub) => { const d = el("div"); d.append(el("div", "lab", lab), el("div", "val", val), el("div", "sub", sub)); more.append(d); };
   box("Il passo più lungo", h ? nf1(h.max) + " ms" : "–", "negli ultimi 20 secondi");
-  box("Disegno", h ? nf1(h.drawPerSec) + " ms al secondo" : "–", h ? `${nf1(h.fps)} fotogrammi al secondo` : "");
-  box("Neuroni accesi", h ? nf1(h.fired) + " per passo" : "–", h ? `${Math.round(h.traced).toLocaleString("it-IT")} ricordano di essersi accesi` : "");
+  box("Disegno", h ? nf1(h.drawPerSec) + " ms" : "–", h ? `ogni secondo · ${nf1(h.fps)} fotogrammi` : "");
+  box("Neuroni accesi", h ? nf1(h.fired) : "–", h ? `per passo · ${Math.round(h.traced).toLocaleString("it-IT")} ricordano di essersi accesi` : "");
   box("Neuroni", net.neurons.length.toLocaleString("it-IT"), `${synCount().toLocaleString("it-IT")} sinapsi`);
   box("Fotocamera", camStream && video.videoWidth ? `${video.videoWidth} × ${video.videoHeight}` : "spenta", "la retina è 128 × 96");
   box("Grafica", { piena:"Piena", auto:"Automatica", leggera:"Leggera" }[gfxMode], gfxMode === "auto" && Q > 0 ? `semplificata, livello ${Q}` : Q > 0 ? `livello ${Q}` : "completa");
 }
+function healthReport(){
+  const h = healthSum(), [, title] = healthState(h), now = new Date(), r1 = v => Math.round(v*10)/10;
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const tel = { browser: navigator.userAgent, schermo: `${screen.width}×${screen.height} ×${devicePixelRatio}`, processori: navigator.hardwareConcurrency || null, app_sulla_home: standalone };
+  const text = [
+    `Rete Viva · salute · versione ${VERSIONE} · ${now.toLocaleString("it-IT", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}`,
+    `Stato: ${title}`,
+    `Rete: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita, ${N_IN} ingressi`,
+    h && `Ultimi ${healthHist.length*2} secondi: ${nf1(h.rate)} passi al secondo, ${h.lost} persi, ritardo medio ${nf1(h.late)} ms`,
+    h && `Un passo ${nf1(h.step)} ms (media lunga ${nf1(stepMs)}): ` + PARTS.map(([k, lab]) => `${lab} ${nf1(h.parts[k])}`).join(" · ") + ` · il più lungo ${nf1(h.max)} ms`,
+    h && `Disegno ${nf1(h.drawPerSec)} ms al secondo, ${nf1(h.fps)} fotogrammi al secondo · grafica ${gfxMode}, livello ${Q}, pixel ×${DPR}`,
+    h && `Neuroni accesi ${nf1(h.fired)} per passo · ${Math.round(h.traced)} ricordano di essersi accesi`,
+    `Fotocamera ${camStream && video.videoWidth ? video.videoWidth + "×" + video.videoHeight : "spenta"} · microfono ${micOn ? "acceso" : "spento"} · voce ${voiceOn ? "accesa" : "spenta"}`,
+    `Telefono: schermo ${tel.schermo}, ${tel.processori || "?"} processori, ${standalone ? "app sulla Home" : "nel browser"}`,
+    navigator.userAgent,
+  ].filter(Boolean).join("\n");
+  const json = { versione: VERSIONE, quando: now.toISOString(), stato: title, riassunto: text, telefono: tel,
+    rete: { neuroni: net.neurons.length, sinapsi: synCount(), vita_passi: net.life, ingressi: N_IN, voglia: r1(net.voice.voglia*100) },
+    grafica: { modo: gfxMode, livello: Q, pixel: DPR, tela: `${cv.width}×${cv.height}` },
+    ultimi_20s: h, passo_medio_lungo_ms: stepMs, al_limite: tooBusy(),
+    // ogni finestra di 2 secondi: i tempi sono in millesimi per passo (in media), il disegno in millesimi in tutta la finestra
+    finestre_di_2s: healthLog.map(w => { const k = w.n || 1; return { ora: new Date(w.t).toLocaleTimeString("it-IT"), livello: w.Q, neuroni: w.neuroni,
+      passi: w.n, durata_ms: w.win, vista: w.vis/k, udito: w.ear/k, neuroni_ms: w.net/k, apprendimento: w.learn/k, voce: w.voice/k, resto: w.rest/k,
+      passo_max: w.max, disegno_ms: w.draw, fotogrammi: w.frames, accesi_per_passo: w.fired/k, tracce: w.traced/k, ritardo_medio_ms: w.ticks ? w.late/w.ticks : 0 }; }) };
+  return { text, json };
+}
+$("hCopy").onclick = async () => {
+  const b = $("hCopy");
+  try { await navigator.clipboard.writeText(healthReport().text); b.textContent = "Copiato"; }
+  catch(e) { b.textContent = "Non riesco a copiare"; }
+  setTimeout(() => { b.textContent = "Copia il riassunto"; }, 2000);
+};
+$("hSave").onclick = () => {
+  const data = JSON.stringify(healthReport().json, (k, v) => typeof v === "number" ? Math.round(v*100)/100 : v, 1);
+  const a = document.createElement("a"), d = new Date(), p2 = v => String(v).padStart(2, "0");
+  a.href = URL.createObjectURL(new Blob([data], { type:"application/json" }));
+  a.download = `rete-viva-salute-${d.toISOString().slice(0,10)}-${p2(d.getHours())}${p2(d.getMinutes())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
 function openHealth(){ closeSheet(); closeEyeBig(); hideToast(); healthOpen = true; $("healthPage").hidden = false; renderHealth(); clearInterval(healthIv); healthIv = setInterval(renderHealth, 1000); }
 function closeHealth(){ if (!healthOpen) return; healthOpen = false; clearInterval(healthIv); $("healthPage").hidden = true; }
 $("openHealth").onclick = openHealth;
