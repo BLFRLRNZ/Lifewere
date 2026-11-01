@@ -52,7 +52,7 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 .ctl:disabled{opacity:.35}
 #sheet{position:fixed;inset:0;z-index:20;background:#000a;display:flex;align-items:flex-end;justify-content:center}
 #sheet.hidden{display:none}
-#sheet .box{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
+#sheet .box{width:100%;max-width:520px;max-height:calc(100% - env(safe-area-inset-top) - 12px);overflow-y:auto;overscroll-behavior:contain;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
 #sheet h2{margin:0 0 2px;font-size:13px;color:var(--dim);font-weight:600}
 #sheet button{flex:0 0 auto;min-height:48px;font-size:15px;text-align:left;padding:10px 14px;background:#191d27}
 #sheet .danger{color:#ff8a7a;border-color:#5a2a26;margin-top:6px}
@@ -132,6 +132,39 @@ table.dt{width:100%;border-collapse:collapse;font-size:11px}
 .copy .cx b{display:block;font-size:13px;font-weight:650}
 .copy .cx span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
 .copy button{flex:0 0 auto;min-height:36px;font-size:12px}
+/* salute */
+#sheet .tile.wide{flex-direction:row;align-items:center;gap:12px;min-height:58px;padding:10px 14px}
+#sheet .tile.wide svg{margin:0}
+.tile .tw{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;color:var(--text);font-size:inherit;line-height:1.3}
+.tile .tw span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+.sdot{flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:#4a5568}
+.sdot.ok{background:#0ca30c}.sdot.warn{background:#fab219}.sdot.bad{background:#d03b3b}
+.hstatus{display:flex;align-items:center;gap:12px;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.hstatus .sdot{width:14px;height:14px}
+.hstatus b{display:block;font-size:17px;font-weight:650}
+.hstatus span{display:block;font-size:12px;color:var(--dim);margin-top:2px;line-height:1.4}
+.hcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.hrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13px;color:var(--dim)}
+.hrow b{font-size:17px;font-weight:650;color:var(--text)}
+.hbar{height:8px;border-radius:4px;background:#232a37;overflow:hidden}
+.hbar i{display:block;height:100%;border-radius:4px;background:#3987e5;width:0}
+.hseg{position:relative;height:10px;border-radius:5px;background:#232a37;display:flex;gap:2px;overflow:hidden}
+.hseg i{display:block;height:100%;flex:0 0 auto}
+.hseg .lim{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text);opacity:.55}
+.hscale{position:relative;height:13px;font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:-4px}
+.hscale span{position:absolute;top:0;white-space:nowrap}
+.hscale span:first-child{left:0}.hscale .hlim{left:36%;transform:translateX(-50%)}.hscale span:last-child{right:0}
+.hleg{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;font-size:12px;color:var(--dim)}
+.hleg div{display:flex;align-items:center;gap:7px;min-width:0}
+.hleg i{flex:0 0 auto;width:9px;height:9px;border-radius:2px}
+.hleg b{margin-left:auto;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hgrid > div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.hgrid .lab{font-size:11px;color:var(--dim)}
+.hgrid .val{font-size:17px;font-weight:650;margin-top:2px;white-space:nowrap}
+.hgrid .sub{font-size:11px;color:var(--dim);margin-top:1px}
+.hnote{font-size:12px;color:var(--dim);line-height:1.45}
+.hfoot{padding:2px 2px 8px}
 /* avvisi dei momenti */
 .toast{position:fixed;z-index:35;top:calc(env(safe-area-inset-top) + 48px);left:calc(clamp(140px, 36vw, 240px) + 8px);right:12px;display:flex;justify-content:center;pointer-events:none}
 .tin{display:flex;align-items:center;gap:9px;max-width:100%;padding:9px 13px;border-radius:12px;background:#151a24f2;border:1px solid #2a3242;font-size:13px;line-height:1.3;box-shadow:0 8px 28px #000a;opacity:0;transform:translateY(-6px);transition:opacity .3s, transform .3s}
@@ -200,7 +233,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
   <div id="eyeBig" class="hidden">
     <div class="chips"><button class="chip" id="sceneBtn" aria-pressed="false">Scena sotto: no</button></div>
     <canvas id="eyesBig"></canvas>
-    <p>Vede solo ciò che si muove: giallo dove la luce aumenta, azzurro dove diminuisce, in proporzione alla luce della stanza. I riquadri gialli sono le 48 zone che coprono tutta la vista. Al centro, nel riquadro azzurro, c'è la fovea: 54 zone più piccole con il doppio dei dettagli. "Scena sotto" mostra anche l'immagine vera, scurita: lei però vede solo i punti colorati. Più movimento c'è, più il riquadro è spesso. Tocca per chiudere.</p>
+    <p>Vede solo ciò che si muove: giallo dove la luce aumenta, azzurro dove diminuisce, in proporzione alla luce della stanza. I riquadri gialli sono le 48 zone che arrivano ai neuroni. "Scena sotto" mostra anche l'immagine vera, scurita: lei però vede solo i punti colorati. Più movimento c'è, più il riquadro è spesso. Tocca per chiudere.</p>
   </div>
   <div id="wake">
     <p id="wakeMsg">Parte con pochi neuroni. Vede quello che si muove e sente i suoni. Ha una voce con corde vocali e bocca: all'inizio fa versi spontanei, vocali e sillabe, si ascolta e impara a riconoscersi; poi prova a rifare i suoni che sente. Più impara, più ha voglia di parlare. Quando qualcosa la sorprende, un neurone si divide per impararlo. I neuroni che scaricano insieme creano sinapsi, quelli inutili vengono potati.</p>
@@ -223,6 +256,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
       <button class="tile" id="openDiary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M5 15l4-4 3 3 7-7"/><path d="M15 7h4v4"/></svg><b>Diario</b><span>crescita, momenti e copie</span></button>
       <button class="tile" id="nightBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><path d="M17.5 3v3M16 4.5h3"/></svg><b>Modalità notte</b><span>schermo nero, lei resta sveglia</span></button>
     </div>
+    <button class="tile wide" id="openHealth"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><span class="tw"><b>Salute</b><span id="healthLine">come gira sul telefono</span></span><i class="sdot" id="healthDot"></i></button>
     <div class="gfx">
       <div class="gfx-row"><span>Grafica</span>
         <div class="seg" id="gfxSeg" role="group" aria-label="Grafica"><button data-g="piena">Piena</button><button data-g="auto">Automatica</button><button data-g="leggera">Leggera</button></div>
@@ -275,6 +309,29 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
   </div>
 </section>
 
+<section id="healthPage" class="page" role="dialog" aria-label="Salute" hidden>
+  <header class="pg-head">
+    <div><h2>Salute</h2><p>Come gira la rete su questo telefono, negli ultimi 20 secondi</p></div>
+    <button class="iconbtn" id="healthClose" aria-label="Chiudi la salute"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </header>
+  <div class="pg-body">
+    <div class="hstatus"><i class="sdot" id="hDot"></i><div><b id="hTitle"></b><span id="hText"></span></div></div>
+    <div class="hcard">
+      <div class="hrow"><span>Passi al secondo</span><b id="hRate"></b></div>
+      <div class="hbar"><i id="hRateBar"></i></div>
+      <div class="hnote" id="hRateNote"></div>
+    </div>
+    <div class="hcard">
+      <div class="hrow"><span>Un passo</span><b id="hStep"></b></div>
+      <div class="hseg" id="hSeg" role="img"></div>
+      <div class="hscale"><span>0</span><span class="hlim">limite 18 ms</span><span>50 ms</span></div>
+      <div class="hleg" id="hLeg"></div>
+    </div>
+    <div class="hgrid" id="hMore"></div>
+    <div class="hnote hfoot">Ogni passo ha a disposizione 50 millesimi di secondo, cioè 20 passi al secondo. Se lei ne usa più di 18, la rete è al limite del telefono: i neuroni nuovi prendono il posto dei meno utili e non cresce più. Il resto del tempo serve al disegno e al telefono. Con il Risparmio energetico il telefono va più piano.</div>
+  </div>
+</section>
+
 <div class="toast" id="toast" role="status" aria-live="polite"><div class="tin" id="toastIn"></div></div>
 
 <div id="night" hidden>
@@ -285,8 +342,8 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const IN_V = 48, IN_F = 54, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, fovea, bande dell'udito, altezza, sagoma del suono
-const OFF_F = IN_V, OFF_A = OFF_F + IN_F, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 124 ingressi sensoriali
+const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
+const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
 const EAR_F = Array.from({length:IN_P}, (_, k) => 80 * Math.pow(1500/80, k/(IN_P-1)));
 const LOG_EF = EAR_F.map(Math.log2);
@@ -348,26 +405,20 @@ function synCount(){ let c=0; for (const n of net.neurons) c += n.syn.length; re
 // ======================= sensi =======================
 const x = new Float32Array(N_IN), xn = new Float32Array(N_IN);
 const video = document.createElement("video"); video.playsInline = true; video.muted = true;
-// la retina: tutta l'immagine (128 x 96 punti, che arrivano ai neuroni come 48 zone) e, al centro, una fovea con il
-// doppio dei dettagli (96 x 64 punti sul riquadro centrale, 54 zone più piccole), come l'occhio umano
-const VW = 128, VH = 96, FW = 96, FH = 64;
-const FX0 = 40, FY0 = 32, FX1 = 88, FY1 = 64;          // dove sta la fovea nell'immagine intera
-const PCOLS = 8, PROWS = 6, FCOLS = 9, FROWS = 6;        // zone della vista intera e della fovea
+// la retina: tutta l'immagine, 128 x 96 punti, che arrivano ai neuroni come 48 zone (8 x 6).
+// La fotocamera si legge una volta sola per passo
+const VW = 128, VH = 96, PCOLS = 8, PROWS = 6;
 // a quale zona appartiene ogni punto (calcolato una volta sola)
 const cellOf = (w, h, cols, rows) => Int16Array.from({length:w*h}, (_, i) => ((((i / w) | 0) * rows / h) | 0)*cols + (((i % w) * cols / w) | 0));
-const CELL_W = cellOf(VW, VH, PCOLS, PROWS), CELL_F = cellOf(FW, FH, FCOLS, FROWS);
+const CELL_W = cellOf(VW, VH, PCOLS, PROWS);
 // una zona è "piena" quando si muove circa un terzo dei suoi punti
-const FULL_W = VW*VH/(PCOLS*PROWS)*0.3125, FULL_F = FW*FH/(FCOLS*FROWS)*0.3125;
+const FULL_W = VW*VH/(PCOLS*PROWS)*0.3125;
 const LOG_LUT = Float32Array.from({length:256}, (_, i) => Math.log(i + 16));
 const grab = document.createElement("canvas"); grab.width = VW; grab.height = VH;
 const gctx = grab.getContext("2d", { willReadFrequently:true });
-const fgrab = document.createElement("canvas"); fgrab.width = FW; fgrab.height = FH;
-const fctx = fgrab.getContext("2d", { willReadFrequently:true });
 const eyes = document.getElementById("eyes"), ectx = eyes.getContext("2d");
 const evImg = ectx.createImageData(VW, VH);
-const fovEl = document.createElement("canvas"); fovEl.width = FW; fovEl.height = FH;
-const fvctx = fovEl.getContext("2d"), fvImg = fvctx.createImageData(FW, FH);
-const retW = {}, retF = {};                              // stato delle due retine: immagine precedente e rumore
+const retW = {};                                         // stato della retina: immagine precedente e rumore
 let facing = "environment", camStream = null, micStream = null;
 let audioCtx = null, analyser = null, freq = null, master = null;
 const bandBase = new Float32Array(IN_A);
@@ -403,27 +454,18 @@ function retina(c2, w, h, st, img, cells, cellIdx){
 }
 function readVision(){
   if (!camStream || video.readyState < 2){ for (let i=0;i<OFF_A;i++) x[i]=0; return; }
-  gctx.drawImage(video, 0, 0, VW, VH);
-  const vw = video.videoWidth || VW, vh = video.videoHeight || VH;
-  fctx.drawImage(video, vw*FX0/VW, vh*FY0/VH, vw*(FX1-FX0)/VW, vh*(FY1-FY0)/VH, 0, 0, FW, FH);
-  const cells = new Float32Array(IN_V), fcells = new Float32Array(IN_F);
+  gctx.drawImage(video, 0, 0, VW, VH);                                     // l'unica lettura della fotocamera
+  const cells = new Float32Array(IN_V);
   retina(gctx, VW, VH, retW, evImg, cells, CELL_W);
-  retina(fctx, FW, FH, retF, fvImg, fcells, CELL_F);
-  if (!nightOn && !diaryOpen){                                            // nascosta: inutile disegnarla
-    ectx.putImageData(evImg, 0, 0);
-    ectx.strokeStyle = "rgba(120,220,255,0.35)"; ectx.lineWidth = 1;      // dove sta la fovea
-    ectx.strokeRect(FX0 + 0.5, FY0 + 0.5, FX1 - FX0 - 1, FY1 - FY0 - 1);
-  }
-  fvctx.putImageData(fvImg, 0, 0);
+  if (!nightOn && !diaryOpen) ectx.putImageData(evImg, 0, 0);              // nascosta: inutile disegnarla
   for (let i=0;i<IN_V;i++) visIn[i] = x[i] = Math.min(1, cells[i] / FULL_W);
-  for (let i=0;i<IN_F;i++) visIn[IN_V+i] = x[OFF_F+i] = Math.min(1, fcells[i] / FULL_F);
   noteSight();
   drawEyeBig();
 }
 
-// la vista ingrandita: gli stessi eventi, le 48 zone (8 x 6) e, al centro, la fovea con le sue 54 zone (9 x 6).
+// la vista ingrandita: gli stessi eventi e le 48 zone (8 x 6) che arrivano ai neuroni.
 // Se vuoi, sotto si vede anche la scena vera, scurita: aiuta a capire cosa si sta muovendo
-const visIn = new Float32Array(IN_V + IN_F);
+const visIn = new Float32Array(IN_V);
 const eyeBigEl = document.getElementById("eyeBig"), ebig = document.getElementById("eyesBig"), ebctx = ebig.getContext("2d");
 let eyeBigOpen = false, showScene = false;
 try { showScene = localStorage.getItem("rete-viva-scena") === "1"; } catch(e) {}
@@ -437,15 +479,10 @@ function sizeEyeBig(){
 function drawEyeBig(){
   if (!eyeBigOpen) return;
   const W = ebig.width, H = ebig.height, cw = W/PCOLS, ch = H/PROWS, lw = Math.max(1, W/400);
-  const fx = W*FX0/VW, fy = H*FY0/VH, fw = W*(FX1-FX0)/VW, fh = H*(FY1-FY0)/VH, fcw = fw/FCOLS, fch = fh/FROWS;
   ebctx.imageSmoothingEnabled = false;
   ebctx.globalAlpha = 1; ebctx.fillStyle = "#000"; ebctx.fillRect(0, 0, W, H);
   if (showScene && camStream && video.readyState >= 2){ ebctx.imageSmoothingEnabled = true; ebctx.globalAlpha = 0.32; ebctx.drawImage(video, 0, 0, W, H); ebctx.globalAlpha = 1; ebctx.imageSmoothingEnabled = false; }
-  // i punti della vista intera, tranne il riquadro della fovea (lì ci vanno i suoi punti più fini)
-  const sx = VW/W, sy = VH/H;
-  for (const [x0, y0, x1, y1] of [[0, 0, W, fy], [0, fy + fh, W, H], [0, fy, fx, fy + fh], [fx + fw, fy, W, fy + fh]])
-    if (x1 > x0 && y1 > y0) ebctx.drawImage(eyes, x0*sx, y0*sy, (x1-x0)*sx, (y1-y0)*sy, x0, y0, x1-x0, y1-y0);
-  ebctx.drawImage(fovEl, fx, fy, fw, fh);
+  ebctx.drawImage(eyes, 0, 0, W, H);
   ebctx.strokeStyle = "rgba(255,255,255,0.12)"; ebctx.lineWidth = lw; ebctx.beginPath();
   for (let i=1;i<PCOLS;i++){ ebctx.moveTo(i*cw, 0); ebctx.lineTo(i*cw, H); }
   for (let j=1;j<PROWS;j++){ ebctx.moveTo(0, j*ch); ebctx.lineTo(W, j*ch); }
@@ -455,16 +492,6 @@ function drawEyeBig(){
     ebctx.strokeStyle = `rgba(255,211,77,${0.3 + 0.7*v})`; ebctx.lineWidth = lw*(1 + 4*v);
     ebctx.strokeRect(i*cw + 3*lw, j*ch + 3*lw, cw - 6*lw, ch - 6*lw);
   }
-  ebctx.strokeStyle = "rgba(120,220,255,0.16)"; ebctx.lineWidth = lw; ebctx.beginPath();
-  for (let i=1;i<FCOLS;i++){ ebctx.moveTo(fx + i*fcw, fy); ebctx.lineTo(fx + i*fcw, fy + fh); }
-  for (let j=1;j<FROWS;j++){ ebctx.moveTo(fx, fy + j*fch); ebctx.lineTo(fx + fw, fy + j*fch); }
-  ebctx.stroke();
-  for (let j=0;j<FROWS;j++) for (let i=0;i<FCOLS;i++){
-    const v = visIn[IN_V + j*FCOLS + i]; if (v < 0.03) continue;
-    ebctx.strokeStyle = `rgba(120,220,255,${0.35 + 0.65*v})`; ebctx.lineWidth = lw*(1 + 2.5*v);
-    ebctx.strokeRect(fx + i*fcw + 2*lw, fy + j*fch + 2*lw, fcw - 4*lw, fch - 4*lw);
-  }
-  ebctx.strokeStyle = "rgba(120,220,255,0.7)"; ebctx.lineWidth = lw*1.5; ebctx.strokeRect(fx, fy, fw, fh);
 }
 function openEyeBig(){ eyeBigOpen = true; eyeBigEl.classList.remove("hidden"); sizeEyeBig(); drawEyeBig(); }
 function closeEyeBig(){ eyeBigOpen = false; eyeBigEl.classList.add("hidden"); }
@@ -826,16 +853,23 @@ const GFX_Q = { piena: 0, auto: 0, leggera: 2 };
 // Il costo del disegno da solo non ferma mai la crescita.
 function tooBusy(){ return stepMs > 18 || (rateHist.length >= 10 && rateAvg < 15 && drawShare < 0.1); }
 let traced = [];           // neuroni che hanno scaricato da poco (traccia STDP ancora viva)
+// la salute: quanto tempo prende ogni parte del passo, quanto arrivano in ritardo i passi, quanto costa il disegno.
+// Si raccoglie in finestre di 2 secondi (le stesse del controllo della grafica) e si guardano le ultime 10, cioè 20 secondi
+const newHW = () => ({ n:0, vis:0, ear:0, net:0, learn:0, voice:0, rest:0, max:0, fired:0, traced:0, ticks:0, late:0, draw:0, frames:0, win:0 });
+let HW = newHW(), healthHist = [], lastTick = 0;
 function step(){
   const t0 = performance.now();
+  if (lastTick){ HW.ticks++; HW.late += Math.max(0, t0 - lastTick - 1000/HZ); }
+  lastTick = t0;
   stepInner();
   stepMs = stepMs*0.95 + (performance.now() - t0)*0.05;
   if (saveJob) saveSlice(4);                       // fuori dal tempo del passo: il salvataggio non conta come fatica della rete
 }
 function stepInner(){
-  net.life++; lastStepAt = performance.now();
-  readVision(); readHearing();
-  balanceSenses();
+  const T0 = performance.now();
+  net.life++; lastStepAt = T0;
+  readVision(); const T1 = performance.now();
+  readHearing(); balanceSenses(); const T2 = performance.now();
   let e = 0; for (let i=0;i<N_IN;i++) e += x[i]*x[i]; e = Math.sqrt(e);
   const N = net.neurons;
   let best = null, bs = -1, novNow = 0;
@@ -880,6 +914,7 @@ function stepInner(){
     if (n.v > n.th) firedNow.push(n);
   }
 
+  const T3 = performance.now();
   for (const n of firedNow){
     // gli annunci verso di me si sono avverati: quelle sinapsi avevano ragione
     pending = pending.filter(q => { if (q.to !== n.id) return true; const a = byId.get(q.from); if (a) strengthen(a, n, 0.03); kept += q.w*q.w; return false; });
@@ -902,10 +937,12 @@ function stepInner(){
   for (const n of firedNow){ n.tr = 1; if (!n.inTr){ n.inTr = true; traced.push(n); } }
   spikesRecent += firedNow.length; stepsRecent++;
   if (firedNow.length) lastActLife = net.life;
+  const T4 = performance.now();
 
   // ---- voce ----
   selfListen(firedNow);
   voiceStep(firedNow);
+  const T5 = performance.now();
 
   // attesa tradita: quota di aspettative che non si sono avverate
   if (kept + broken > 0.01){ const ev = Math.min(1, (kept + broken)*4); betrayal += (broken/(kept + broken) - betrayal)*0.12*ev; }
@@ -921,6 +958,10 @@ function stepInner(){
   observe();
   if (net.life % DIARY_EVERY === 0) diaryTick();
   if (net.life % 4 === 0) updateStats();
+  const T6 = performance.now();
+  HW.n++; HW.vis += T1 - T0; HW.ear += T2 - T1; HW.net += T3 - T2; HW.learn += T4 - T3; HW.voice += T5 - T4; HW.rest += T6 - T5;
+  if (T6 - T0 > HW.max) HW.max = T6 - T0;
+  HW.fired += firedNow.length; HW.traced += traced.length;
 }
 
 function strengthen(a, b, amt){
@@ -1112,7 +1153,7 @@ function project(o, out, W, H){
 // (il disegno non c'entrava) e per un po' non riprova. Quando va bene da un po', riprova più ricca.
 const Q_FPS = [60, 60, 30, 15, 8, 4], Q_FLIGHTS = [900, 400, 200, 80, 40, 15], Q_SYN = [0, 0, 1, 2, 3, 4], Q_MAX = 5;
 let lastRender = 0, rateLife = 0, rateT = performance.now(), calmSince = performance.now(), upWait = 30000, lastUp = -1e9;
-let trial = null, noTryUntil = 0, tryWait = 300000;
+let trial = null, noTryUntil = 0, tryWait = 300000, warmed = false;
 function setQ(q){ q = Math.max(0, Math.min(Q_MAX, q)); rateHist = []; if (q !== Q){ Q = q; resize(); } }
 function adaptQ(now){
   if (rateHist.length < 10) return;                        // si decide solo su 20 secondi interi
@@ -1132,14 +1173,16 @@ function draw(now){
   requestAnimationFrame(draw);
   if (now - rateT > 2000){
     const win = now - rateT;
-    if (running && net.life > rateLife){
+    if (running && net.life > rateLife && !warmed) warmed = true;           // la prima finestra dopo il risveglio non conta: è a metà
+    else if (running && net.life > rateLife){
       stepRate = (net.life - rateLife) * 1000 / win;
       rateHist.push([stepRate, drawSum/win]); if (rateHist.length > 10) rateHist.shift();
       rateAvg = 0; drawShare = 0; for (const [r, d] of rateHist){ rateAvg += r; drawShare += d; }
       rateAvg /= rateHist.length; drawShare /= rateHist.length;
       if (gfxMode === "auto") adaptQ(now);
-    } else rateHist = [];
-    drawSum = 0; rateLife = net.life; rateT = now;
+      HW.win = win; HW.draw = drawSum; healthHist.push(HW); if (healthHist.length > 10) healthHist.shift();
+    } else if (!running){ rateHist = []; healthHist = []; warmed = false; }
+    HW = newHW(); drawSum = 0; rateLife = net.life; rateT = now;
   }
   if (nightOn || diaryOpen) return;          // modalità notte o diario aperto: la rete non si vede, niente disegno
   if (now - lastRender < 1000/Q_FPS[Q] - 2) return;
@@ -1149,7 +1192,7 @@ function draw(now){
   lastRender = now;
   const tf = performance.now();
   drawScene(now);
-  const dt = performance.now() - tf; drawMs = drawMs*0.95 + dt*0.05; drawSum += dt;
+  const dt = performance.now() - tf; drawMs = drawMs*0.95 + dt*0.05; drawSum += dt; HW.frames++;
 }
 requestAnimationFrame(draw);
 
@@ -1327,13 +1370,14 @@ function neuronRec(n){
 }
 // come erano disposti gli ingressi nelle versioni precedenti (V vista, F fovea, A bande, P altezza, S sagoma, T tatto)
 const OLD_LAYOUTS = {
-  124: [["V",48],["F",24],["A",16],["P",24],["S",12]],              // prima della fovea più fine
+  154: [["V",48],["F",54],["A",16],["P",24],["S",12]],              // con la fovea fine (54 zone)
+  124: [["V",48],["F",24],["A",16],["P",24],["S",12]],              // con la prima fovea (24 zone)
   128: [["V",48],["F",24],["A",16],["P",24],["S",12],["T",4]],   // prima che togliessimo il tatto
   104: [["V",48],["A",16],["P",24],["S",12],["T",4]],    // prima della fovea
   92:  [["V",48],["A",16],["P",24],["T",4]],             // prima della sagoma
   68:  [["V",48],["A",16],["T",4]],                      // prima dell'altezza
 };
-const NEW_OFF = { V:0, F:OFF_F, A:OFF_A, P:OFF_P, S:OFF_S };   // il tatto non c'è più: i suoi pesi si lasciano
+const NEW_OFF = { V:0, A:OFF_A, P:OFF_P, S:OFF_S };   // la fovea e il tatto non ci sono più: i loro pesi si lasciano
 function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
@@ -1348,12 +1392,12 @@ function deserialize(text){
     const w = new Float32Array(N_IN);
     if (q.length === N_IN) for (let i=0;i<N_IN;i++) w[i] = q[i]/127;
     else if (OLD_LAYOUTS[q.length]){ let o = 0; for (const [k, n] of OLD_LAYOUTS[q.length]){
-      if (k === "F" && n === 24){                     // la fovea di prima aveva 6 x 4 zone: ognuna delle nuove 9 x 6 prende quella che la copre
-        // (ridotte in proporzione, così la fovea pesa nel neurone quanto pesava prima)
-        for (let r=0;r<FROWS;r++) for (let c=0;c<FCOLS;c++) w[OFF_F + r*FCOLS + c] = q[o + ((r*4/FROWS)|0)*6 + ((c*6/FCOLS)|0)]/127*Math.sqrt(24/IN_F);
-      } else if (NEW_OFF[k] !== undefined) for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127;
+      if (NEW_OFF[k] !== undefined) for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127;
       o += n; } }
     else throw new Error("file non valido");
+    // un neurone che guardava solo la fovea resta senza ingressi: ricomincia ad ascoltare qualcosa a caso
+    let e = 0; for (let i=0;i<N_IN;i++) e += w[i]*w[i];
+    if (e < 1e-6) w.set(randUnit());
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
     // i neuroni salvati prima di questa versione non avevano la stabilità: li considera stabili ma senza utilità accumulata
@@ -1643,7 +1687,7 @@ function mergeHistory(d){
 let wakeLock = null;
 function stopCamera(){
   if (camStream) camStream.getTracks().forEach(t => t.stop());
-  camStream = null; video.srcObject = null; retW.prev = retF.prev = null; retW.noise = retF.noise = undefined;
+  camStream = null; video.srcObject = null; retW.prev = null; retW.noise = undefined;
   ectx.fillStyle = "#000"; ectx.fillRect(0, 0, VW, VH); visIn.fill(0); drawEyeBig();
   for (let i=0;i<OFF_A;i++) x[i] = 0;
 }
@@ -1657,7 +1701,7 @@ function stopMic(){
 async function startCamera(){
   stopCamera();
   try {
-    camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:640}, height:{ideal:480} } });
+    camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:320}, height:{ideal:240}, aspectRatio:{ideal:4/3} } });
     video.srcObject = camStream; await video.play();
   } catch(e) { camStream = null; setState("niente vista: permesso camera negato"); }
 }
@@ -1679,7 +1723,7 @@ async function wake(){
   $("wake").classList.add("hidden");
   if (camOn) await startCamera(); else stopCamera();
   if (micOn && !micStream) await startMic();
-  running = true; timer = setInterval(step, 1000/HZ);
+  running = true; lastTick = 0; timer = setInterval(step, 1000/HZ);
   refreshButtons();
   dailyCopy();
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e) {}
@@ -1738,7 +1782,7 @@ $("camBtn").onclick = async () => { camOn = !camOn; savePrefs(); refreshButtons(
 $("micBtn").onclick = async () => { micOn = !micOn; savePrefs(); refreshButtons(); if (running){ if (micOn) await startMic(); else stopMic(); } };
 $("voice").onclick = () => { voiceOn = !voiceOn; savePrefs(); refreshButtons(); };
 $("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; savePrefs(); if (running && camOn) startCamera(); };
-$("more").onclick = () => { refreshCopyLine(); refreshGfx(); $("sheet").classList.remove("hidden"); };
+$("more").onclick = () => { refreshCopyLine(); refreshGfx(); refreshHealthLine(); $("sheet").classList.remove("hidden"); };
 for (const b of $("gfxSeg").children) b.onclick = () => setGfx(b.dataset.g);
 $("sheetClose").onclick = closeSheet;
 $("sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
@@ -2123,10 +2167,10 @@ function refreshCopyLine(){
 
 // ---- avvisi dei momenti ----
 const toastQ = []; let toastBusy = false;
-function showToast(m){ if (nightOn || diaryOpen) return; toastQ.push(m); if (toastQ.length > 4) toastQ.splice(0, toastQ.length - 4); if (!toastBusy) nextToast(); }
+function showToast(m){ if (nightOn || diaryOpen || healthOpen) return; toastQ.push(m); if (toastQ.length > 4) toastQ.splice(0, toastQ.length - 4); if (!toastBusy) nextToast(); }
 function nextToast(){
   const m = toastQ.shift(), t = $("toast"), box = $("toastIn");
-  if (!m || nightOn || diaryOpen){ toastQ.length = 0; toastBusy = false; return; }
+  if (!m || nightOn || diaryOpen || healthOpen){ toastQ.length = 0; toastBusy = false; return; }
   toastBusy = true;
   box.innerHTML = svgIcon(m.k); box.firstChild.style.color = (KIND[m.k] || KIND.sistema).col; box.append(el("span", null, m.x));
   t.classList.add("show");
@@ -2134,12 +2178,65 @@ function nextToast(){
 }
 function hideToast(){ toastQ.length = 0; $("toast").classList.remove("show"); }
 
+// ======================= salute =======================
+const PARTS = [["vis","vista","#3987e5"],["ear","udito","#d95926"],["net","neuroni","#199e70"],["learn","apprendimento","#c98500"],["voice","voce","#d55181"],["rest","crescita e schermo","#008300"]];
+let healthOpen = false, healthIv = null;
+const nf1 = v => v.toLocaleString("it-IT", { maximumFractionDigits:1 });
+function healthSum(){
+  const H = healthHist; if (!H.length) return null;
+  const S = newHW(); for (const h of H) for (const k in S) S[k] = k === "max" ? Math.max(S[k], h[k]) : S[k] + h[k];
+  const sec = S.win/1000, per = k => S.n ? S[k]/S.n : 0;
+  return { full: H.length >= 10, rate: S.n/sec, step: per("vis") + per("ear") + per("net") + per("learn") + per("voice") + per("rest"),
+           parts: Object.fromEntries(PARTS.map(([k]) => [k, per(k)])), max: S.max, lost: Math.max(0, Math.round(sec*HZ - S.n)),
+           late: S.ticks ? S.late/S.ticks : 0, drawPerSec: S.draw/sec, fps: S.frames/sec, fired: per("fired"), traced: per("traced") };
+}
+function healthState(h){
+  if (!running) return ["", "Dorme", "Quando la svegli, qui vedi come gira."];
+  if (!h || healthHist.length < 5) return ["", "Sto misurando…", "Servono una decina di secondi."];
+  if (tooBusy()) return ["bad", "Al limite del telefono", `Un passo usa ${nf1(stepMs)} dei 50 millesimi (il limite è 18): i neuroni nuovi prendono il posto dei meno utili, quindi non cresce più.`];
+  if (h.rate < 18) return ["warn", "Rallentata", `Vive a ${nf1(h.rate)} passi al secondo invece di 20.`];
+  return ["ok", "Va bene", "Vive al suo ritmo, e c'è spazio per crescere."];
+}
+function refreshHealthLine(){
+  const h = healthSum(), [cls, title] = healthState(h);
+  $("healthDot").className = "sdot " + cls;
+  $("healthLine").textContent = h && running ? `${title} · ${nf1(h.rate)} passi al secondo · un passo ${nf1(h.step)} ms` : title;
+}
+function renderHealth(){
+  const h = healthSum(), [cls, title, text] = healthState(h);
+  $("hDot").className = "sdot " + cls; $("hTitle").textContent = title; $("hText").textContent = text;
+  const rate = h ? h.rate : 0;
+  $("hRate").textContent = h ? `${nf1(rate)} su 20` : "–";
+  $("hRateBar").style.width = Math.min(100, rate/20*100) + "%";
+  $("hRateNote").textContent = h ? (h.lost ? `${h.lost.toLocaleString("it-IT")} passi persi in ${healthHist.length*2} secondi · i passi arrivano in media ${nf1(h.late)} ms dopo il previsto` : "Nessun passo perso") : "";
+  $("hStep").textContent = h ? `${nf1(h.step)} ms su 50` : "–";
+  // la barra: tutto il tempo che ha un passo (50 ms), diviso nelle parti che usa; il resto è libero
+  const seg = $("hSeg"); seg.replaceChildren();
+  if (h) for (const [k, , col] of PARTS){ const v = h.parts[k]; if (v <= 0) continue; const i = el("i"); i.style.width = Math.min(100, v/50*100) + "%"; i.style.background = col; seg.append(i); }
+  const lim = el("i", "lim"); lim.style.left = (18/50*100) + "%"; seg.append(lim);
+  seg.setAttribute("aria-label", h ? "Un passo: " + PARTS.map(([k, lab]) => `${lab} ${nf1(h.parts[k])} ms`).join(", ") : "nessuna misura");
+  const leg = $("hLeg"); leg.replaceChildren();
+  for (const [k, lab, col] of PARTS){ const d = el("div"), sw = el("i"); sw.style.background = col; d.append(sw, document.createTextNode(lab), el("b", null, h ? nf1(h.parts[k]) + " ms" : "–")); leg.append(d); }
+  const more = $("hMore"); more.replaceChildren();
+  const box = (lab, val, sub) => { const d = el("div"); d.append(el("div", "lab", lab), el("div", "val", val), el("div", "sub", sub)); more.append(d); };
+  box("Il passo più lungo", h ? nf1(h.max) + " ms" : "–", "negli ultimi 20 secondi");
+  box("Disegno", h ? nf1(h.drawPerSec) + " ms al secondo" : "–", h ? `${nf1(h.fps)} fotogrammi al secondo` : "");
+  box("Neuroni accesi", h ? nf1(h.fired) + " per passo" : "–", h ? `${Math.round(h.traced).toLocaleString("it-IT")} ricordano di essersi accesi` : "");
+  box("Neuroni", net.neurons.length.toLocaleString("it-IT"), `${synCount().toLocaleString("it-IT")} sinapsi`);
+  box("Fotocamera", camStream && video.videoWidth ? `${video.videoWidth} × ${video.videoHeight}` : "spenta", "la retina è 128 × 96");
+  box("Grafica", { piena:"Piena", auto:"Automatica", leggera:"Leggera" }[gfxMode], gfxMode === "auto" && Q > 0 ? `semplificata, livello ${Q}` : Q > 0 ? `livello ${Q}` : "completa");
+}
+function openHealth(){ closeSheet(); closeEyeBig(); hideToast(); healthOpen = true; $("healthPage").hidden = false; renderHealth(); clearInterval(healthIv); healthIv = setInterval(renderHealth, 1000); }
+function closeHealth(){ if (!healthOpen) return; healthOpen = false; clearInterval(healthIv); $("healthPage").hidden = true; }
+$("openHealth").onclick = openHealth;
+$("healthClose").onclick = closeHealth;
+
 // ======================= modalità notte =======================
 // Schermo nero (sugli schermi OLED il nero non consuma), niente disegno della rete, lei continua a vivere.
 // Restano solo un puntino che si accende un po' quando i neuroni lavorano e due numeri, che si spostano piano.
 let nightOn = false, nightT = null, nightIv = null, nightMove = 0, spikesRecent = 0, stepsRecent = 0, actAvg = 0;
 function enterNight(){
-  closeSheet(); closeEyeBig(); closeDiary(); hideToast();
+  closeSheet(); closeEyeBig(); closeDiary(); closeHealth(); hideToast();
   nightOn = true; $("night").hidden = false; $("nightExit").hidden = true; nightMove = 0; spikesRecent = stepsRecent = 0;
   updateNight(); clearInterval(nightIv); nightIv = setInterval(updateNight, 1000);
 }
@@ -2157,7 +2254,7 @@ function updateNight(){
 }
 $("night").addEventListener("click", e => { if (e.target.id === "nightExit") return; $("nightExit").hidden = false; clearTimeout(nightT); nightT = setTimeout(() => { $("nightExit").hidden = true; }, 5000); });
 $("nightExit").onclick = exitNight;
-addEventListener("keydown", e => { if (e.key !== "Escape") return; if (nightOn) exitNight(); else if (diaryOpen) closeDiary(); });
+addEventListener("keydown", e => { if (e.key !== "Escape") return; if (nightOn) exitNight(); else if (diaryOpen) closeDiary(); else if (healthOpen) closeHealth(); });
 
 // ---- comandi del diario ----
 $("openDiary").onclick = () => openDiary();
