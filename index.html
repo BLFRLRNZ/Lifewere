@@ -64,6 +64,13 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 .tile b{font-size:14px;font-weight:650}
 .tile span{font-size:11px;color:var(--dim);line-height:1.3}
 #sheet .copyline{min-height:40px;font-size:12px;color:var(--dim);background:transparent;border-style:dashed}
+.gfx{display:flex;flex-direction:column;gap:7px;padding:10px 12px 11px 14px;border:1px solid var(--line);border-radius:12px;background:#191d27}
+.gfx-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gfx-row > span{font-size:15px}
+#sheet .seg button{flex:0 0 auto;min-height:34px;padding:5px 11px;font-size:13px;text-align:center;background:transparent;border:0;border-radius:8px;color:var(--dim)}
+#sheet .seg button[aria-pressed="true"]{background:#2a3242;color:var(--text)}
+.gfx-hint{font-size:11px;color:var(--dim);line-height:1.35}
+@media (max-width:400px){ #sheet .seg button{padding:5px 8px} }
 /* pagina del diario */
 .page{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .pg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 4px;width:100%;max-width:760px;margin:0 auto}
@@ -215,6 +222,12 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
     <div class="tiles2">
       <button class="tile" id="openDiary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M5 15l4-4 3 3 7-7"/><path d="M15 7h4v4"/></svg><b>Diario</b><span>crescita, momenti e copie</span></button>
       <button class="tile" id="nightBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><path d="M17.5 3v3M16 4.5h3"/></svg><b>Modalità notte</b><span>schermo nero, lei resta sveglia</span></button>
+    </div>
+    <div class="gfx">
+      <div class="gfx-row"><span>Grafica</span>
+        <div class="seg" id="gfxSeg" role="group" aria-label="Grafica"><button data-g="piena">Piena</button><button data-g="auto">Automatica</button><button data-g="leggera">Leggera</button></div>
+      </div>
+      <div class="gfx-hint" id="gfxHint"></div>
     </div>
     <button class="copyline" id="copyLine">Copie di sicurezza</button>
     <button id="exp">Salva su file</button>
@@ -791,15 +804,19 @@ let pending = [];          // annunci arrivati: aspettano di vedere se il neuron
 const rings = [];          // effetti visivi: nascite e potature
 
 let stepMs = 0, drawMs = 0, stepRate = 20, Q = 0;
+// la grafica la scegli tu: "piena" sempre completa, "leggera" sempre semplificata, "auto" si semplifica solo se serve davvero
+let gfxMode = "piena", rateHist = [], rateAvg = 20, drawShare = 0, drawSum = 0;
+const GFX_Q = { piena: 0, auto: 0, leggera: 2 };
 // la rete è al limite quando il suo calcolo occupa troppo (su 50 ms per passo, lascia margine),
-// oppure quando, anche con la grafica ridotta al minimo, non riesce più a vivere a 20 passi al secondo.
-// Il costo del disegno da solo non ferma mai la crescita: si semplifica la grafica.
-function tooBusy(){ return stepMs > 18 || (Q >= Q_MAX && stepRate < 15); }
+// oppure quando per 20 secondi vive a meno di 15 passi al secondo mentre il disegno pesa poco (quindi non è colpa sua).
+// Il costo del disegno da solo non ferma mai la crescita.
+function tooBusy(){ return stepMs > 18 || (rateHist.length >= 10 && rateAvg < 15 && drawShare < 0.1); }
 let traced = [];           // neuroni che hanno scaricato da poco (traccia STDP ancora viva)
 function step(){
   const t0 = performance.now();
   stepInner();
   stepMs = stepMs*0.95 + (performance.now() - t0)*0.05;
+  if (saveJob) saveSlice(4);                       // fuori dal tempo del passo: il salvataggio non conta come fatica della rete
 }
 function stepInner(){
   net.life++; lastStepAt = performance.now();
@@ -1072,22 +1089,42 @@ function project(o, out, W, H){
   out.sx = W/2 + x1*s; out.sy = H*0.54 + y2*s; out.sc = s; out.d = d;
 }
 
-// La grafica si adatta: ogni 2 secondi controlla se la rete riesce a vivere a 20 passi al secondo.
-// Se no, semplifica il disegno (meno pixel, meno sinapsi accese, meno fotogrammi); se sì per un po', lo arricchisce.
+// Livelli della grafica: 0 completa; poi meno pixel, meno sinapsi accese, meno fotogrammi.
+// Ogni 2 secondi si annota quanti passi ha fatto lei e quanto tempo ha preso il disegno, ma si decide sempre
+// sugli ultimi 20 secondi: un inciampo di un attimo non conta.
+// Grafica automatica: se per 20 secondi vive a meno di 18,5 passi al secondo prova a semplificare di un livello,
+// e dopo altri 20 secondi controlla: se è migliorata resta così; se no e il disegno pesa ancora, prova un livello in più;
+// se no torna com'era (il disegno non c'entrava) e per un po' non riprova. Quando va bene da un po', riprova più ricca.
 const Q_FPS = [60, 60, 30, 15, 8, 4], Q_FLIGHTS = [900, 400, 200, 80, 40, 15], Q_SYN = [0, 0, 1, 2, 3, 4], Q_MAX = 5;
-let lastRender = 0, rateLife = 0, rateT = performance.now(), calmSince = performance.now(), upWait = 8000, lastUp = 0;
+let lastRender = 0, rateLife = 0, rateT = performance.now(), calmSince = performance.now(), upWait = 30000, lastUp = -1e9;
+let trial = null, noTryUntil = 0, tryWait = 300000;
+function setQ(q){ q = Math.max(0, Math.min(Q_MAX, q)); rateHist = []; if (q !== Q){ Q = q; resize(); } }
+function adaptQ(now){
+  if (rateHist.length < 10) return;                        // si decide solo su 20 secondi interi
+  if (trial){                                               // aveva provato a semplificare: è servito?
+    if (rateAvg >= trial.before + 0.5 || rateAvg >= 19.5){
+      if (now - lastUp < 60000) upWait = Math.min(600000, upWait*2);   // aveva appena arricchito e non reggeva: aspetterà di più
+      trial = null; calmSince = now; tryWait = 300000;
+    } else if (drawShare > 0.1 && Q < Q_MAX) setQ(Q + 1);             // il disegno pesa ancora: un livello in più
+    else { setQ(trial.q); trial = null; noTryUntil = now + tryWait; tryWait = Math.min(1800000, tryWait*2); }   // non serviva
+    return;
+  }
+  if (rateAvg < 18.5 && Q < Q_MAX && now > noTryUntil){ trial = { q: Q, before: rateAvg }; setQ(Q + 1); return; }
+  if (rateAvg < 19.5) calmSince = now;
+  else if (Q > 0 && now - calmSince > upWait){ setQ(Q - 1); lastUp = now; calmSince = now; }
+}
 function draw(now){
   requestAnimationFrame(draw);
   if (now - rateT > 2000){
+    const win = now - rateT;
     if (running && net.life > rateLife){
-      stepRate = (net.life - rateLife) * 1000 / (now - rateT);
-      if (stepRate < 18.5 && Q < Q_MAX){
-        if (now - lastUp < 6000) upWait = Math.min(60000, upWait*2);   // aveva appena arricchito e non regge: aspetterà di più
-        Q++; resize(); calmSince = now;
-      } else if (stepRate >= 19.3 && Q > 0 && now - calmSince > upWait){ Q--; resize(); calmSince = now; lastUp = now; }
-      else if (stepRate < 19.3) calmSince = now;
-    }
-    rateLife = net.life; rateT = now;
+      stepRate = (net.life - rateLife) * 1000 / win;
+      rateHist.push([stepRate, drawSum/win]); if (rateHist.length > 10) rateHist.shift();
+      rateAvg = 0; drawShare = 0; for (const [r, d] of rateHist){ rateAvg += r; drawShare += d; }
+      rateAvg /= rateHist.length; drawShare /= rateHist.length;
+      if (gfxMode === "auto") adaptQ(now);
+    } else rateHist = [];
+    drawSum = 0; rateLife = net.life; rateT = now;
   }
   if (nightOn || diaryOpen) return;          // modalità notte o diario aperto: la rete non si vede, niente disegno
   if (now - lastRender < 1000/Q_FPS[Q] - 2) return;
@@ -1097,7 +1134,7 @@ function draw(now){
   lastRender = now;
   const tf = performance.now();
   drawScene(now);
-  drawMs = drawMs*0.95 + (performance.now() - tf)*0.05;
+  const dt = performance.now() - tf; drawMs = drawMs*0.95 + dt*0.05; drawSum += dt;
 }
 requestAnimationFrame(draw);
 
@@ -1244,7 +1281,10 @@ function updateStats(){
   $("sN").style.color = tooBusy() ? "var(--accent)" : "";
   $("sS").textContent = synCount(); $("sB").textContent = net.births;
   $("sT").textContent = net.neurons.reduce((a, n) => a + (n.stable ? 1 : 0), 0);
-  const help = "trascina per ruotare · due dita per lo zoom" + (Q > 0 ? " · grafica semplificata" : "") + (tooBusy() ? " · rete al limite del telefono" : "");
+  const slow = rateHist.length >= 10 && rateAvg < 18;
+  const help = "trascina per ruotare · due dita per lo zoom" + (gfxMode === "auto" && Q > 0 ? " · grafica semplificata" : "")
+    + (slow ? ` · vive più lenta: ${rateAvg.toLocaleString("it-IT", { maximumFractionDigits:1 })} passi al secondo` : "")
+    + (tooBusy() ? " · rete al limite del telefono" : "");
   if ($("help").textContent !== help) $("help").textContent = help;
   $("sP").textContent = net.prunes; $("sL").textContent = fmtLife(net.life);
   const a = Math.round(novelty*100), b = Math.round(betrayal*100);
@@ -1259,15 +1299,16 @@ const r3 = v => Math.round(v*1000)/1000;
 const packF = a => b64(Uint8Array.from(a, v => Math.round(Math.max(0, Math.min(2, v))*127)));
 const unpackF = s => { const u = unb64(s); return u.length === N_MOT*N_AUD ? Float32Array.from(u, v => v/127) : new Float32Array(N_MOT*N_AUD); };
 function serialize(){ return JSON.stringify(serializeObj()); }
-function serializeObj(){
+function serializeObj(){ return { ...headObj(), neurons: net.neurons.map(neuronRec) }; }
+function headObj(){
   return { v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, babbles:net.babbles, replies:net.replies, nextId:net.nextId,
     firsts: net.firsts, bornAt: net.bornAt,
-    voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2) },
-    neurons: net.neurons.map(n => {
-      const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
-      return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
-               w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
-    }) };
+    voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2) } };
+}
+function neuronRec(n){
+  const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
+  return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
+           w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
 }
 // come erano disposti gli ingressi nelle versioni precedenti (V vista, F fovea, A bande, P altezza, S sagoma, T tatto)
 const OLD_LAYOUTS = {
@@ -1326,13 +1367,34 @@ async function idbDelK(k){ const db = await idb(); return new Promise((ok, ko) =
 const idbGet = () => idbGetK(KEY), idbPut = v => idbPutK(KEY, v);
 
 function setState(msg){ $("state").textContent = msg; }
+// tutto d'un colpo: quando va a dormire, quando l'app va in secondo piano, dopo un cambiamento grosso
 async function save(){
-  const data = serialize(), kb = Math.max(1, Math.round(data.length/1024));
+  saveJob = null;                                  // un salvataggio a pezzetti ancora in corso non serve più
+  const data = serialize();
   try { await idbPut(data); } catch(e) {}
-  setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${kb} KB`);
+  savedState(data.length);
+}
+function savedState(len){ setState(`salvata ${new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} · ${Math.max(1, Math.round(len/1024))} KB`); }
+// a pezzetti, mentre è sveglia: dopo ogni passo trasforma in testo qualche neurone, al massimo per 4 millesimi,
+// così lei non si ferma mai. I neuroni nati nel frattempo entrano nel salvataggio dopo, 20 secondi più tardi.
+let saveJob = null;
+function startSave(){
+  if (saveJob) return;
+  saveJob = { net, list: net.neurons.slice(), i: 0, parts: [], head: JSON.stringify(headObj()) };
+}
+function saveSlice(budget){
+  const J = saveJob; if (!J) return;
+  if (J.net !== net){ saveJob = null; return; }   // nel frattempo è stata caricata o ripristinata un'altra rete
+  const end = performance.now() + budget;
+  do { for (let k=0; k<8 && J.i < J.list.length; k++) J.parts.push(JSON.stringify(neuronRec(J.list[J.i++]))); }
+  while (J.i < J.list.length && performance.now() < end);
+  if (J.i < J.list.length) return;
+  saveJob = null;
+  const data = J.head.slice(0, -1) + ',"neurons":[' + J.parts.join(",") + "]}";
+  idbPut(data).then(() => { if (!saveJob) savedState(data.length); }).catch(() => {});
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ saveJob = null; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
@@ -1352,7 +1414,7 @@ async function load(){
   }
   if (!diary.length) diaryRecord();
 }
-setInterval(() => { if (running) save(); }, SAVE_EVERY_MS);   // nel database del telefono; la copia di riserva solo quando chiudi
+setInterval(() => { if (running) startSave(); }, SAVE_EVERY_MS);   // nel database del telefono, a pezzetti; la copia di riserva solo quando chiudi
 document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
 addEventListener("pagehide", saveSync);
 
@@ -1630,8 +1692,23 @@ document.addEventListener("visibilitychange", async () => {
 // le scelte degli interruttori restano anche quando riapri l'app (solo su questo telefono)
 const PREF_KEY = "rete-viva-scelte";
 let camOn = true, micOn = true;
-try { const pr = JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); if (pr.cam === false) camOn = false; if (pr.mic === false) micOn = false; if (pr.voice === false) voiceOn = false; if (pr.facing) facing = pr.facing; } catch(e) {}
-function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ cam:camOn, mic:micOn, voice:voiceOn, facing })); } catch(e) {} }
+try { const pr = JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); if (pr.cam === false) camOn = false; if (pr.mic === false) micOn = false; if (pr.voice === false) voiceOn = false; if (pr.facing) facing = pr.facing; if (GFX_Q[pr.graf] !== undefined) gfxMode = pr.graf; } catch(e) {}
+function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ cam:camOn, mic:micOn, voice:voiceOn, facing, graf:gfxMode })); } catch(e) {} }
+const GFX_HINT = {
+  piena: "Sempre nitida, con tutte le sinapsi accese. Se un giorno il disegno la rallentasse, lo leggi sotto la rete.",
+  auto: "Piena finché lei vive al suo ritmo. Se per 20 secondi rallenta, prova a semplificare: se aiuta resta, se no torna com'era.",
+  leggera: "Meno pixel, metà dei fotogrammi e meno sinapsi accese: consuma meno batteria.",
+};
+function refreshGfx(){
+  for (const b of $("gfxSeg").children) b.setAttribute("aria-pressed", b.dataset.g === gfxMode ? "true" : "false");
+  $("gfxHint").textContent = GFX_HINT[gfxMode];
+}
+function setGfx(m){
+  gfxMode = m; savePrefs();
+  trial = null; noTryUntil = 0; tryWait = 300000; upWait = 30000; calmSince = performance.now();
+  setQ(GFX_Q[m]); staticDirty = true; refreshGfx(); updateStats();
+}
+setQ(GFX_Q[gfxMode]);
 function setToggle(id, on){ const b = $(id); b.classList.toggle("off", !on); b.setAttribute("aria-pressed", on ? "true" : "false"); }
 function refreshButtons(){
   setToggle("camBtn", camOn); setToggle("micBtn", micOn); setToggle("voice", voiceOn);
@@ -1646,7 +1723,8 @@ $("camBtn").onclick = async () => { camOn = !camOn; savePrefs(); refreshButtons(
 $("micBtn").onclick = async () => { micOn = !micOn; savePrefs(); refreshButtons(); if (running){ if (micOn) await startMic(); else stopMic(); } };
 $("voice").onclick = () => { voiceOn = !voiceOn; savePrefs(); refreshButtons(); };
 $("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; savePrefs(); if (running && camOn) startCamera(); };
-$("more").onclick = () => { refreshCopyLine(); $("sheet").classList.remove("hidden"); };
+$("more").onclick = () => { refreshCopyLine(); refreshGfx(); $("sheet").classList.remove("hidden"); };
+for (const b of $("gfxSeg").children) b.onclick = () => setGfx(b.dataset.g);
 $("sheetClose").onclick = closeSheet;
 $("sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
 $("exp").onclick = () => {
