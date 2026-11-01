@@ -346,7 +346,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 21;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 22;                // la versione dell'app (la stessa della memoria del service worker)
 const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
 const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
@@ -367,10 +367,11 @@ const NEWBORN_GRACE = HZ * 30;    // per 30 secondi un neurone appena nato non p
 const SAVE_EVERY_MS = 20000;      // salvataggio automatico
 const TRACE_DECAY = 0.88;         // traccia di un impulso: dopo 0,5 s vale ancora un terzo
 const EXPECT_WINDOW = 14;         // passi (0,7 s) per vedere se un annuncio si avvera
-// altezze da 120 a 1500 Hz: le usano sia l'orecchio (24 ingressi) sia le corde vocali (24 neuroni motori).
-// È una gamma da bambino: abbastanza bassa perché le vocali si distinguano, e che comprende anche le voci adulte
+// le corde vocali: 24 neuroni motori dal grave all'acuto, da 90 a 360 Hz, circa un semitono l'uno dall'altro.
+// È la gamma della voce parlata, da quella di un uomo a quella di un bambino. Più in alto le vocali si distinguono sempre peggio:
+// le armoniche diventano troppo distanti per disegnarle. L'orecchio invece sente di più (da 80 a 1500 Hz)
 const N_PITCH = 24;
-const PITCH_F = Array.from({length:N_PITCH}, (_, k) => 120 * Math.pow(1500/120, k/(N_PITCH-1)));
+const PITCH_F = Array.from({length:N_PITCH}, (_, k) => 90 * Math.pow(360/90, k/(N_PITCH-1)));
 const LOG_PF = PITCH_F.map(Math.log2);
 // la bocca: ogni muscolo è una piccola popolazione di neuroni motori, ognuno con una posizione preferita
 const ART = [
@@ -630,8 +631,9 @@ function balanceSenses(){
 // la stanchezza sposta la "bolla" di attività, quindi la voce scorre. Altezza = media dei neuroni attivi; volume = quanti sono attivi.
 // Bocca: mascella, lingua, labbra, naso e soffio. Ogni muscolo è una piccola popolazione di neuroni motori; la sua posizione
 // è quella dei neuroni più attivi. Hanno un rumore lento e si stancano, quindi la bocca esplora da sola; la rete può spingerli.
-// Ritmo: due neuroni che si alternano (come quelli della masticazione) aprono e chiudono la mascella. Quando sono accesi,
-// la voce diventa sillabe ("ba-ba", "da-da"). Nessuna regola decide quando parlare né cosa dire.
+// Ritmo: due neuroni che si alternano (come quelli della masticazione) chiudono e riaprono la bocca circa quattro volte al secondo.
+// Quando sono accesi la voce diventa sillabe; la consonante dipende da dove si chiude la bocca (labbra: b, m; denti: d, n;
+// palato: g, ng). Nessuna regola decide quando parlare né cosa dire.
 let voiceOn = true, M = null;
 const mh = new Float32Array(N_MOT), mr = new Float32Array(N_MOT), madapt = new Float32Array(N_MOT);
 const mIn = new Float32Array(N_MOT), mInT = new Float32Array(N_MOT), mz = new Float32Array(N_MOT);
@@ -639,42 +641,145 @@ const rawP = new Float32Array(N_PITCH), rawH = new Float32Array(N_PITCH);   // s
 let needAir = false;                                                        // il fiato è finito: deve riprendere aria prima di poter parlare
 let speakStart = 0, lastSpeechEnd = -99, speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
 const art = { J:0.45, T:0.5, L:0.2, V:0.05, B:0.05 };     // posizioni attuali dei muscoli della bocca
-let cpgA = 0.6, cpgB = 0, cpgaA = 0, cpgaB = 0, rhythmOn = false, prevOpen = 1, mouthNow = null;
+let cpgA = 0, cpgB = 0, cpgaA = 0, cpgaB = 0, rhythmOn = false, mouthNow = null;
 const rnd4 = () => Math.random()+Math.random()+Math.random()+Math.random()-2;
 
 // ---- il corpo che fa il suono ----
-// sorgente: le corde vocali, un suono ricco di armoniche; poi tre filtri (le formanti) spostati da mascella, lingua e labbra;
-// un passaggio nasale; e un soffio (rumore) per "sss" e per lo scoppio d'aria quando la bocca si riapre.
-function articulate(a){
-  const Lr = Math.min(1, a.L/0.7), Lc = Math.max(0, Math.min(1, (a.L - 0.75)/0.15));
-  const F1 = (250 + 600*a.J) * (1 - 0.15*Lr);
-  const F2 = Math.max(600, 700 + 1700*a.T - 450*Lr);
-  const F3 = 2300 + 600*a.T;
-  const open = Math.max(0, Math.min(1, a.J*1.15)) * (1 - Lc);
-  const place = Lc > 0.5 ? 0 : a.T > 0.6 ? 1 : 2;            // 0 labbra, 1 denti, 2 palato
-  return { F1, F2, F3, open, place, noiseF: [1500, 5000, 2500][place], nasal: a.V, breath: a.B };
+// È costruito come una voce vera (il modello "sorgente e filtro" dei sintetizzatori di voce parlata):
+// - corde vocali: a ogni vibrazione lasciano passare un soffio d'aria che si richiude di colpo. Ne esce un suono morbido,
+//   con le armoniche che calano verso l'acuto, e con il piccolo tremolio di ogni voce;
+// - gola e bocca: un tubo che risuona a cinque frequenze (le formanti), una dopo l'altra come nel tubo vero.
+//   Mascella, lingua e labbra spostano le prime tre: sono loro a fare le vocali;
+// - naso: un secondo passaggio, che si apre con il velo del palato (m, n);
+// - aria: il soffio che passa per la bocca (voce soffiata) e lo scoppio quando una chiusura si riapre (b, d, g).
+// Nelle sillabe la bocca si chiude in un punto (labbra, denti o palato) e alla riapertura le formanti partono da dove le lascia
+// quel punto per arrivare alla vocale: è soprattutto da questo movimento che l'orecchio capisce se è una b, una d o una g.
+const SUB = 5, SUB_DT = 1/(HZ*SUB);                     // il ritmo delle sillabe si calcola 5 volte per passo (ogni 10 ms)
+const aperS = new Float32Array(SUB).fill(1);              // apertura data dal ritmo in ogni parte del passo (1 aperta, 0 chiusa)
+const PLACE_CONS = [["b","m"], ["d","n"], ["g","ng"]];   // labbra, denti, palato: con il naso chiuso e con il naso aperto
+const NOTCH_F = [1000, 1800, 3200];                       // dove il naso "toglie" suono, secondo il punto in cui la bocca è chiusa
+const BW_F = [80, 100, 150, 200, 300];                     // larghezza di ogni risonanza, in Hz (come nelle voci vere)
+const OUT_GAIN = 0.62;                                     // così anche la vocale più forte resta sotto il massimo
+// le formanti della vocale: la mascella apre (F1 sale), la lingua in avanti alza F2, le labbra arrotondate abbassano tutto
+function vowelOf(J, T, L){
+  const Lr = Math.min(1, L/0.7);
+  return [(250 + 600*J)*(1 - 0.15*Lr), Math.max(600, 700 + 1700*T - 450*Lr), 2300 + 600*T - 150*Lr];
 }
-function ensureVoice(){
-  if (!audioCtx || M) return;
-  const ac = audioCtx; M = {};
-  const n = 48, re = new Float32Array(n+1), im = new Float32Array(n+1); for (let k=1;k<=n;k++) im[k] = 1/Math.pow(k, 1.1);
-  M.osc = ac.createOscillator(); M.osc.setPeriodicWave(ac.createPeriodicWave(re, im)); M.osc.frequency.value = 220;
-  M.voice = ac.createGain(); M.voice.gain.value = 0; M.osc.connect(M.voice);
-  M.f = [0,1,2].map(i => { const b = ac.createBiquadFilter(); b.type = "bandpass"; b.Q.value = [5,8,10][i]; b.frequency.value = [500,1500,2600][i]; return b; });
-  M.fg = [1.0, 0.7, 0.3].map(v => { const g = ac.createGain(); g.gain.value = v; return g; });
-  M.direct = ac.createGain(); M.direct.gain.value = 0.12;
-  M.mouth = ac.createGain(); M.mouth.gain.value = 1;
-  for (let i=0;i<3;i++){ M.voice.connect(M.f[i]); M.f[i].connect(M.fg[i]); M.fg[i].connect(M.mouth); }
-  M.voice.connect(M.direct); M.direct.connect(M.mouth);
-  M.nasalLP = ac.createBiquadFilter(); M.nasalLP.type = "lowpass"; M.nasalLP.frequency.value = 300; M.nasalLP.Q.value = 0.7;
-  M.nasal = ac.createGain(); M.nasal.gain.value = 0; M.voice.connect(M.nasalLP); M.nasalLP.connect(M.nasal);
-  const nb = ac.createBuffer(1, ac.sampleRate*2, ac.sampleRate), nd = nb.getChannelData(0); for (let i=0;i<nd.length;i++) nd[i] = Math.random()*2-1;
-  M.noise = ac.createBufferSource(); M.noise.buffer = nb; M.noise.loop = true;
-  M.noiseBP = ac.createBiquadFilter(); M.noiseBP.type = "bandpass"; M.noiseBP.frequency.value = 3000; M.noiseBP.Q.value = 1.2;
-  M.noiseG = ac.createGain(); M.noiseG.gain.value = 0; M.noise.connect(M.noiseBP); M.noiseBP.connect(M.noiseG);
-  M.out = ac.createGain(); M.out.gain.value = 3.0;
-  M.mouth.connect(M.out); M.nasal.connect(M.out); M.noiseG.connect(M.out); M.out.connect(master);
-  M.osc.start(); M.noise.start();
+// dove si chiude la bocca quando il ritmo la chiude: labbra protese → labbra; lingua avanti → denti; lingua indietro → palato
+function placeOf(L, T){ return L > 0.55 ? 0 : T > 0.55 ? 1 : 2; }
+// dove vanno le formanti quando la bocca è chiusa in quel punto (il "locus", come misurato sulle voci vere):
+// labbra → F2 e F3 in basso; denti → F2 verso 1700-2000 Hz, F3 in alto; palato → F2 e F3 vicine (si "pizzicano")
+function locusOf(place, F2, F3){
+  if (place === 0) return [200, 0.7*F2 + 50, F3 - 350];
+  if (place === 1) return [200, 0.35*F2 + 1250, Math.max(F3, 2800)];
+  const g2 = 0.6*F2 + 950; return [200, g2, Math.max(g2 + 300, 2000)];
+}
+// la bocca in un istante. c = quanto la chiude il ritmo delle sillabe (0 aperta, 1 chiusa); le labbra possono anche serrarsi da sole
+function articulate(a, c = 0){
+  const v = vowelOf(a.J, a.T, a.L);
+  const Lc = Math.max(0, Math.min(1, (a.L - 0.75)/0.15));
+  const C = Math.max(c, Lc), place = placeOf(a.L, a.T);         // labbra serrate → il punto è comunque le labbra
+  const loc = locusOf(place, v[1], v[2]), w = C*C*(3 - 2*C);
+  return { F1: v[0] + (loc[0] - v[0])*w, F2: v[1] + (loc[1] - v[1])*w, F3: v[2] + (loc[2] - v[2])*w, vow: v,
+           C, place, oral: Math.max(0, Math.min(1, (1 - C)/0.35)), nasal: a.V, breath: a.B };
+}
+// l'impulso d'aria delle corde vocali (il modello di Rosenberg): si aprono in 4 decimi del periodo e si richiudono più in fretta.
+// Dalle labbra esce la variazione di quel flusso: un'onda le cui armoniche calano di circa 6 dB per ottava
+function glottalCoefs(K = 96){
+  const N = 2048, Tp = 0.42, Tn = 0.16, g = new Float32Array(N), cs = new Float32Array(N), sn = new Float32Array(N);
+  for (let i=0;i<N;i++){ const t = i/N; g[i] = t < Tp ? 0.5*(1 - Math.cos(Math.PI*t/Tp)) : t < Tp + Tn ? Math.cos(Math.PI*(t - Tp)/(2*Tn)) : 0;
+    cs[i] = Math.cos(2*Math.PI*i/N); sn[i] = Math.sin(2*Math.PI*i/N); }
+  const re = new Float32Array(K+1), im = new Float32Array(K+1);
+  for (let k=1;k<=K;k++){
+    let a = 0, b = 0; for (let i=0;i<N;i++){ const j = (k*i) % N; a += g[i]*cs[j]; b += g[i]*sn[j]; }
+    re[k] = k*b*2/N; im[k] = -k*a*2/N;                     // la derivata del flusso
+  }
+  return { re, im };
+}
+function buildVoice(ac, dest){
+  const V = { last:{}, closed:false, place:0, on:false };
+  const gw = glottalCoefs();
+  V.osc = ac.createOscillator(); V.osc.setPeriodicWave(ac.createPeriodicWave(gw.re, gw.im)); V.osc.frequency.value = 150;
+  // il tremolio naturale dell'altezza: tre oscillazioni lente sommate, pochi centesimi di semitono (come nelle voci vere)
+  V.flut = ac.createGain(); V.flut.gain.value = 6; V.flut.connect(V.osc.detune);
+  V.lfo = [4.7, 7.1, 12.7].map(f => { const o = ac.createOscillator(); o.frequency.value = f; o.connect(V.flut); return o; });
+  V.src = ac.createGain(); V.src.gain.value = 0; V.osc.connect(V.src);
+  // un unico fruscio d'aria, per il soffio e per gli scoppi
+  const nb = ac.createBuffer(1, ac.sampleRate*2, ac.sampleRate), nd = nb.getChannelData(0);
+  for (let i=0;i<nd.length;i++) nd[i] = Math.random()*2 - 1;
+  V.noise = ac.createBufferSource(); V.noise.buffer = nb; V.noise.loop = true;
+  V.asp = ac.createGain(); V.asp.gain.value = 0; V.noise.connect(V.asp);
+  // gola e bocca: cinque risonanze in fila (le ultime due restano ferme); poi la bocca aperta irradia meglio gli acuti
+  V.F = BW_F.map((bw, i) => { const b = ac.createBiquadFilter(), f = [500,1500,2500,3500,4500][i]; b.type = "lowpass"; b.frequency.value = f; b.Q.value = 20*Math.log10(f/bw); return b; });
+  V.src.connect(V.F[0]); V.asp.connect(V.F[0]);
+  for (let i=0;i<4;i++) V.F[i].connect(V.F[i+1]);
+  V.tilt = ac.createBiquadFilter(); V.tilt.type = "highshelf"; V.tilt.frequency.value = 1300; V.tilt.gain.value = 8; V.F[4].connect(V.tilt);
+  V.oral = ac.createGain(); V.oral.gain.value = 1; V.tilt.connect(V.oral);
+  // il naso, e il ronzio che si sente attraverso la gola quando la bocca è chiusa
+  V.nasLP = ac.createBiquadFilter(); V.nasLP.type = "lowpass"; V.nasLP.frequency.value = 270; V.nasLP.Q.value = 20*Math.log10(2.7);
+  V.notch = ac.createBiquadFilter(); V.notch.type = "notch"; V.notch.frequency.value = 1000; V.notch.Q.value = 1.5;
+  V.nas = ac.createGain(); V.nas.gain.value = 0; V.bar = ac.createGain(); V.bar.gain.value = 0;
+  V.src.connect(V.nasLP); V.nasLP.connect(V.notch); V.notch.connect(V.nas); V.nasLP.connect(V.bar);
+  // lo scoppio d'aria quando una chiusura si riapre
+  V.bp = ac.createBiquadFilter(); V.bp.type = "bandpass"; V.bp.frequency.value = 2000; V.bp.Q.value = 1;
+  V.burst = ac.createGain(); V.burst.gain.value = 0; V.noise.connect(V.bp); V.bp.connect(V.burst);
+  V.out = ac.createGain(); V.out.gain.value = OUT_GAIN;
+  for (const g of [V.oral, V.nas, V.bar, V.burst]) g.connect(V.out);
+  V.out.connect(dest);
+  V.osc.start(); V.noise.start(); V.lfo.forEach(o => o.start());
+  return V;
+}
+// il corpo in questo passo: f0 = altezza (0 se tace), amp = forza della voce, a = muscoli della bocca,
+// aper = apertura data dal ritmo in ciascuna delle 5 parti del passo
+function playBody(V, t0, f0, amp, a, aper, glide){
+  // un comando nuovo solo se cambia qualcosa che si sente (per le formanti: più di 7 centesimi di semitono)
+  const set = (p, key, v, t, tau, tol = 1e-3) => {
+    const o = V.last[key]; if (o !== undefined && Math.abs(v - o) <= tol*Math.abs(v) + 1e-5) return;
+    p.setTargetAtTime(v, t, tau); V.last[key] = v;
+  };
+  if (f0 > 0) V.osc.frequency.setTargetAtTime(f0, t0, glide);
+  set(V.src.gain, "src", amp, t0, 0.04);
+  set(V.asp.gain, "asp", amp*(0.012 + 0.2*a.B), t0, 0.04);
+  if (!amp && !V.on) return;                             // in silenzio la bocca si muove, ma non suona
+  V.on = amp > 0;
+  set(V.nas.gain, "nas", 0.5*a.V, t0, 0.03);
+  for (let s=0;s<SUB;s++){
+    const t = t0 + s*SUB_DT, k = articulate(a, 1 - aper[s]);
+    // le formanti seguono la bocca con il passo dell'organo che si muove: labbra più svelte, dorso della lingua più lento
+    const Fk = [k.F1, k.F2, k.F3], tf = [0.012, 0.016, 0.022][V.place];
+    for (let i=0;i<3;i++){ set(V.F[i].frequency, "F" + i, Fk[i], t, tf, 0.004); set(V.F[i].Q, "Q" + i, 20*Math.log10(Fk[i]/BW_F[i]), t, tf, 0.004); }
+    set(V.oral.gain, "oral", k.oral, t, 0.005, 0.01);
+    set(V.bar.gain, "bar", 0.1*k.C*k.C*(1 - a.V), t, 0.01, 0.01);
+    if (!V.closed && k.C > 0.85){                        // la bocca si chiude: il naso prende il suono del punto di chiusura
+      V.closed = true; V.place = k.place; set(V.notch.frequency, "notch", NOTCH_F[k.place], t, 0.005);
+    } else if (V.closed && k.C < 0.6){                   // si riapre: l'aria trattenuta scoppia (non se esce dal naso)
+      V.closed = false;
+      const pk = amp*[0.25, 0.6, 0.6][V.place]*(1 - a.V);
+      if (pk > 1e-3){
+        const f = [900, 4000, 1.1*k.F2][V.place], q = [0.7, 1.2, 3][V.place];
+        V.bp.frequency.setValueAtTime(f, t); V.bp.Q.setValueAtTime(q, t);
+        V.burst.gain.setValueAtTime(pk, t); V.burst.gain.setTargetAtTime(0, t + 0.003, [0.004, 0.006, 0.012][V.place]);
+      }
+    }
+  }
+}
+// il ritmo delle sillabe in questo passo (vedi voiceStep): riempie aperS, l'apertura della bocca ogni 10 ms
+function rhythmStep(on){
+  const dr = on ? 1 : 0;
+  for (let s=0;s<SUB;s++){
+    const yA = Math.max(0, cpgA), yB = Math.max(0, cpgB);
+    cpgA += SUB_DT/0.016*(-cpgA - 2.5*cpgaA - 2.2*yB + dr + 0.15*rnd4());
+    cpgB += SUB_DT/0.016*(-cpgB - 2.5*cpgaB - 2.2*yA + 0.72*dr + 0.15*rnd4());
+    cpgaA += SUB_DT/0.085*(yA - cpgaA); cpgaB += SUB_DT/0.085*(yB - cpgaB);
+    const oA = Math.max(0, cpgA), oB = Math.max(0, cpgB);
+    aperS[s] = on ? oA/(oA + oB + 0.02) : 1;
+  }
+}
+function ensureVoice(){ if (audioCtx && !M) M = buildVoice(audioCtx, master); }
+function hushVoice(){
+  if (!M) return; const t = audioCtx.currentTime;
+  for (const [p, key] of [[M.src.gain, "src"], [M.asp.gain, "asp"], [M.burst.gain, "burst"]]){ p.cancelScheduledValues(t); p.setTargetAtTime(0, t, 0.02); M.last[key] = 0; }
+  M.on = false; M.closed = false;
 }
 
 // ---- riconoscere la propria voce, imparando ----
@@ -744,14 +849,13 @@ function voiceStep(firedNow){
     art[a.key] += (v - art[a.key])*0.35;
   }
   // ---- ritmo delle sillabe ----
+  // due neuroni che si inibiscono a vicenda e si stancano (come quelli della masticazione): uno apre la bocca, l'altro la chiude.
+  // Con i loro tempi (si accendono in 16 ms, si stancano in 85) fanno circa quattro sillabe al secondo, la velocità del parlare:
+  // la bocca resta chiusa 80-90 ms e aperta 150-160. Si calcolano ogni 10 ms, perché una sillaba dura poco più di quattro passi
   mh[RHY] = 0.85*mh[RHY] + rnd4()*0.13 + 3*mInT[RHY] + (speaking ? -0.01 : -0.06) - 0.5*madapt[RHY];
   mr[RHY] = Math.max(0, Math.min(1, (mh[RHY] - 0.3)*2.5)); madapt[RHY] = 0.97*madapt[RHY] + 0.03*mr[RHY];
   rhythmOn = speaking && mr[RHY] > 0.3;
-  const drive = rhythmOn ? 0.75 : 0;
-  const nA = Math.max(0, Math.min(1, 0.3*cpgA + drive - cpgB - 2.0*cpgaA + (Math.random()-0.5)*0.05));
-  const nB = Math.max(0, Math.min(1, 0.3*cpgB + 0.75*drive - cpgA - 2.0*cpgaB + (Math.random()-0.5)*0.05));
-  cpgA = nA; cpgB = nB; cpgaA = 0.2*cpgaA + 0.8*cpgA; cpgaB = 0.2*cpgaB + 0.8*cpgB;
-  const jaw = rhythmOn ? art.J*(0.06 + 0.94*cpgA/(cpgA + cpgB + 0.05)) : art.J;
+  rhythmStep(rhythmOn);
   // ---- il suono ----
   const was = speaking;
   const loud = Math.max(0, Math.min(1, (S - 0.6)/1.6));
@@ -764,19 +868,8 @@ function voiceStep(firedNow){
   voiceAmp = speaking ? 0.28*loud*Math.min(1, breath*3) : 0;
   // il fiato: si consuma parlando (circa 10 secondi a piena voce) e si ricarica in silenzio (circa 4 secondi)
   breath = speaking ? Math.max(0, breath - 0.005*loud) : Math.min(1, breath + 0.012);
-  mouthNow = articulate({ J:jaw, T:art.T, L:art.L, V:art.V, B:art.B });
-  const burst = speaking && prevOpen < 0.15 && mouthNow.open > 0.3 ? 1 : 0;   // la bocca si riapre dopo una chiusura: scoppio d'aria
-  prevOpen = mouthNow.open;
-  if (M){
-    const t = audioCtx.currentTime, k = mouthNow;
-    if (speaking) M.osc.frequency.setTargetAtTime(voiceF, t, was ? 0.05 : 0.001);   // scivola, non salta
-    M.voice.gain.setTargetAtTime(voiceAmp, t, 0.06);
-    M.f[0].frequency.setTargetAtTime(k.F1, t, 0.025); M.f[1].frequency.setTargetAtTime(k.F2, t, 0.025); M.f[2].frequency.setTargetAtTime(k.F3, t, 0.025);
-    M.mouth.gain.setTargetAtTime(0.03 + 0.97*Math.sqrt(k.open), t, 0.015);
-    M.nasal.gain.setTargetAtTime(0.6*k.nasal, t, 0.03);
-    M.noiseBP.frequency.setTargetAtTime(k.noiseF, t, 0.02);
-    M.noiseG.gain.setTargetAtTime((0.25*k.breath + 0.8*burst)*voiceAmp, t, 0.012);
-  }
+  mouthNow = articulate(art, 1 - aperS[SUB-1]);
+  if (M) playBody(M, audioCtx.currentTime, speaking ? voiceF : 0, voiceAmp, art, aperS, was ? 0.05 : 0.001);   // l'altezza scivola, non salta
   if (speaking && !was){
     speakStart = net.life;
     if (net.life - lastExternal < 30){ net.replies++; voiceKind = "risposta"; } else { net.babbles++; voiceKind = "lallazione"; }
@@ -786,17 +879,19 @@ function voiceStep(firedNow){
   V.voglia += (0.3 - V.voglia)*0.0003; V.voglia = Math.max(0, Math.min(1, V.voglia));  // senza progressi torna calma
 }
 
-// cosa sta dicendo, per mostrarlo sullo schermo (non serve alla rete): la vocale più vicina, e la sillaba se c'è il ritmo
+// cosa sta dicendo, per mostrarlo sullo schermo (non serve alla rete): la vocale più vicina a quella della bocca aperta,
+// la consonante se c'è il ritmo delle sillabe; con le labbra serrate si sente solo il naso («mm») o quasi niente
 const VOW = [["i",280,2250],["e",450,1950],["a",750,1250],["o",480,850],["u",300,750]];
-function sayingNow(){
-  if (!mouthNow) return "";
-  const o = articulate(art);                       // la vocale è quella della bocca aperta, anche durante le sillabe
-  let best = "a", bd = 1e9;
-  for (const [v, f1, f2] of VOW){ const d = Math.pow(Math.log2(o.F1/f1), 2) + Math.pow(Math.log2(o.F2/f2), 2); if (d < bd){ bd = d; best = v; } }
-  if (!rhythmOn) return best;
-  const c = mouthNow.place === 0 ? (art.V > 0.5 ? "m" : "b") : mouthNow.place === 1 ? (art.V > 0.5 ? "n" : "d") : "g";
-  return c + best + "-" + c + best;
+function speechNow(){
+  const o = vowelOf(art.J, art.T, art.L);
+  let v = "a", bd = 1e9;
+  for (const [s, f1, f2] of VOW){ const d = Math.pow(Math.log2(o[0]/f1), 2) + Math.pow(Math.log2(o[1]/f2), 2); if (d < bd){ bd = d; v = s; } }
+  const nas = art.V > 0.5, c = PLACE_CONS[placeOf(art.L, art.T)][nas ? 1 : 0];
+  const shut = !rhythmOn && !!mouthNow && mouthNow.C > 0.85;
+  const text = shut ? (nas ? "mm" : "…") : rhythmOn ? `${c}${v}-${c}${v}` : v;
+  return { v, c: rhythmOn ? c : "", shut, text };
 }
+function sayingNow(){ return mouthNow ? speechNow().text : ""; }
 
 // previsione di ciò che sentirà, confronto con ciò che sente davvero, e apprendimento
 function selfListen(firedNow){
@@ -1562,7 +1657,7 @@ function startDiaryFor(n){
   const done = n.babbles + n.replies > 50, F = n.firsts = {};
   if (n.babbles > 0) F.babble = 1;
   if (n.replies > 0){ F.reply = 1; F.sound = 1; }
-  if (done){ F.syl = 1; F.vow = { a:1, e:1, i:1, o:1, u:1 }; F.cons = { b:1, d:1, g:1, m:1, n:1 }; F.allv = 1; F.self = 1; }
+  if (done){ F.syl = 1; F.vow = { a:1, e:1, i:1, o:1, u:1 }; F.cons = { b:1, d:1, g:1, m:1, n:1, ng:1 }; F.allv = 1; F.self = 1; }
   F.nmax = MILE_N.filter(m => n.neurons.length >= m).pop() || 0;
   F.lmax = MILE_H.filter(h => n.life/HZ/3600 >= h).pop() || 0;
   F.sight = 1;
@@ -1587,15 +1682,15 @@ function observe(){
   const F = net.firsts;
   accVo += net.voice.voglia; accSr += selfSeen; accN++;
   if (speaking){
-    const say = sayingNow();
+    const say = speechNow();
     if (rhythmOn){
-      const c = say[0]; runC = c === lastC ? runC + 1 : 1; lastC = c;
+      const c = say.c; runC = c === lastC ? runC + 1 : 1; lastC = c;
       if (runC === 6){ F.cons = F.cons || {};
         if (!F.cons[c]){ F.cons[c] = 1;
-          if (!F.syl){ F.syl = 1; addMoment("voce", `Prima sillaba: «${say}»`); }
-          else addMoment("voce", `Prima volta con la «${c}»: «${say}»`); } }
-    } else {
-      const v = say.slice(-1); runV = v === lastV ? runV + 1 : 1; lastV = v;
+          if (!F.syl){ F.syl = 1; addMoment("voce", `Prima sillaba: «${say.text}»`); }
+          else addMoment("voce", `Prima volta con la «${c}»: «${say.text}»`); } }
+    } else if (say.shut){ runV = 0; } else {
+      const v = say.v; runV = v === lastV ? runV + 1 : 1; lastV = v;
       if (runV === 6){ F.vow = F.vow || {};
         if (!F.vow[v]){ F.vow[v] = 1; addMoment("voce", `Prima «${v}»`);
           if (!F.allv && Object.keys(F.vow).length === 5){ F.allv = 1; addMoment("voce", "Ha usato tutte e cinque le vocali"); } } }
@@ -1775,7 +1870,7 @@ async function wake(){
 async function sleep(){
   if (!running) return;
   running = false; clearInterval(timer);
-  speaking = false; if (M){ M.voice.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); M.noiseG.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); }
+  speaking = false; hushVoice();
   stopCamera(); stopMic();
   try { if (wakeLock) await wakeLock.release(); } catch(e) {}
   relaxLayout(net.neurons.length > 600 ? 80 : 200);     // dormendo si riorganizza
