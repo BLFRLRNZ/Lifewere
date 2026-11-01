@@ -91,7 +91,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
   </div>
   <div id="eyeBig" class="hidden">
     <canvas id="eyesBig"></canvas>
-    <p>Vede solo ciò che si muove: giallo dove l'immagine si illumina, azzurro dove si scurisce. I riquadri gialli sono le 48 zone che arrivano ai neuroni, più spessi quanto più movimento c'è. Tocca per chiudere.</p>
+    <p>Vede solo ciò che si muove: giallo dove la luce aumenta, azzurro dove diminuisce, in proporzione alla luce della stanza. I riquadri gialli sono le 48 zone che coprono tutta la vista. Al centro, nel riquadro azzurro, c'è la fovea: 24 zone più piccole con il doppio dei dettagli. Più movimento c'è, più il riquadro è spesso. Tocca per chiudere.</p>
   </div>
   <div id="wake">
     <p id="wakeMsg">Parte con pochi neuroni. Vede quello che si muove, sente i suoni e sente il tocco dei quattro pulsanti "tatto". Ha una voce con corde vocali e bocca: all'inizio fa versi spontanei, vocali e sillabe, si ascolta e impara a riconoscersi; poi prova a rifare i suoni che sente. Più impara, più ha voglia di parlare. Quando qualcosa la sorprende, un neurone si divide per impararlo. I neuroni che scaricano insieme creano sinapsi, quelli inutili vengono potati.</p>
@@ -119,8 +119,8 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12, IN_T = 4;  // vista, bande dell'udito, altezza, sagoma del suono, tatto
-const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, OFF_T = OFF_S + IN_S, N_IN = OFF_T + IN_T;   // 104 ingressi sensoriali
+const IN_V = 48, IN_F = 24, IN_A = 16, IN_P = 24, IN_S = 12, IN_T = 4;  // vista, fovea, bande dell'udito, altezza, sagoma del suono, tatto
+const OFF_F = IN_V, OFF_A = OFF_F + IN_F, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, OFF_T = OFF_S + IN_S, N_IN = OFF_T + IN_T;   // 128 ingressi sensoriali
 const MAX_NEURONS = 10000;        // tetto di sicurezza per il salvataggio (circa 3,5 MB)
 // il limite vero è la fatica: la rete cresce finché il telefono riesce a calcolarla in tempo
 const MIN_NEURONS = 4;            // non scende mai sotto
@@ -179,37 +179,72 @@ function synCount(){ let c=0; for (const n of net.neurons) c += n.syn.length; re
 // ======================= sensi =======================
 const x = new Float32Array(N_IN), xn = new Float32Array(N_IN);
 const video = document.createElement("video"); video.playsInline = true; video.muted = true;
-const grab = document.createElement("canvas"); grab.width = 64; grab.height = 48;
+// la retina: tutta l'immagine a bassa risoluzione (64 x 48 punti, 48 zone) e, al centro, una fovea con il doppio
+// dei dettagli (48 x 32 punti sul riquadro centrale, 24 zone più piccole), come l'occhio umano
+const VW = 64, VH = 48, FW = 48, FH = 32;
+const FX0 = 20, FY0 = 16, FX1 = 44, FY1 = 32;          // dove sta la fovea nell'immagine intera
+const grab = document.createElement("canvas"); grab.width = VW; grab.height = VH;
 const gctx = grab.getContext("2d", { willReadFrequently:true });
+const fgrab = document.createElement("canvas"); fgrab.width = FW; fgrab.height = FH;
+const fctx = fgrab.getContext("2d", { willReadFrequently:true });
 const eyes = document.getElementById("eyes"), ectx = eyes.getContext("2d");
-const evImg = ectx.createImageData(64, 48);
-let prevGray = null, facing = "environment", camStream = null, micStream = null;
+const evImg = ectx.createImageData(VW, VH);
+const fovEl = document.createElement("canvas"); fovEl.width = FW; fovEl.height = FH;
+const fvctx = fovEl.getContext("2d"), fvImg = fvctx.createImageData(FW, FH);
+const retW = {}, retF = {};                              // stato delle due retine: immagine precedente e rumore
+let facing = "environment", camStream = null, micStream = null;
 let audioCtx = null, analyser = null, freq = null, master = null;
 const bandBase = new Float32Array(IN_A), touch = new Float32Array(IN_T), held = [false,false,false,false];
 
-// vista a eventi: conta solo i pixel che cambiano, come una retina
-function readVision(){
-  if (!camStream || video.readyState < 2){ for (let i=0;i<IN_V;i++) x[i]=0; return; }
-  gctx.drawImage(video, 0, 0, 64, 48);
-  const d = gctx.getImageData(0, 0, 64, 48).data;
-  const gray = new Float32Array(64*48), cells = new Float32Array(IN_V), ev = evImg.data;
-  for (let i=0, j=0; i<gray.length; i++, j+=4) gray[i] = d[j]*0.3 + d[j+1]*0.59 + d[j+2]*0.11;
-  for (let i=0; i<gray.length; i++){
-    const diff = prevGray ? gray[i] - prevGray[i] : 0, k = i*4;
-    if (diff > 18){ ev[k]=255; ev[k+1]=211; ev[k+2]=77; }
-    else if (diff < -18){ ev[k]=90; ev[k+1]=160; ev[k+2]=255; }
+// vista a eventi: conta solo i punti che cambiano, come una retina.
+// La retina risponde ai cambiamenti di luce in proporzione (in logaritmo), non in assoluto: così vede allo stesso modo
+// in una stanza buia e in una illuminata. E toglie il cambiamento comune a tutta l'immagine (la fotocamera che regola
+// l'esposizione, una luce che si accende), che non è movimento.
+// E come la retina al buio, alza la soglia quando c'è rumore: misura quanto cambiano i punti "tipici" da
+// un'immagine all'altra (la mediana) e tiene la soglia ben sopra quel rumore. Succede anche quando tutta l'immagine
+// si muove insieme (il telefono in mano): si abitua e non viene sommersa.
+const EV_T = 0.12;                                       // soglia minima: circa il 12% di cambiamento di luce
+const retinaHist = new Uint32Array(64);
+function retina(c2, w, h, st, img, cells, cols, cellPx){
+  const d = c2.getImageData(0, 0, w, h).data, n = w*h, L = new Float32Array(n), ev = img.data;
+  for (let i=0, j=0; i<n; i++, j+=4) L[i] = Math.log(d[j]*0.3 + d[j+1]*0.59 + d[j+2]*0.11 + 16);
+  const prev = st.prev; st.prev = L;
+  if (!prev){ for (let i=0;i<n;i++){ const k = i*4; ev[k] = ev[k+1] = ev[k+2] = 0; ev[k+3] = 255; } return; }
+  let m = 0; for (let i=0;i<n;i++) m += L[i] - prev[i];
+  m = Math.max(-0.5, Math.min(0.5, m/n));
+  retinaHist.fill(0);
+  for (let i=0;i<n;i++){ const a = Math.abs(L[i] - prev[i] - m); retinaHist[Math.min(63, (a*100)|0)]++; }
+  let acc = 0, med = 0.63; for (let b=0;b<64;b++){ acc += retinaHist[b]; if (acc >= n/2){ med = (b + 0.5)/100; break; } }
+  st.noise = st.noise === undefined ? med : 0.8*st.noise + 0.2*med;
+  const T = Math.max(EV_T, 3.5*1.4826*st.noise);
+  for (let i=0;i<n;i++){
+    const diff = L[i] - prev[i] - m, k = i*4;
+    if (diff > T){ ev[k]=255; ev[k+1]=211; ev[k+2]=77; }
+    else if (diff < -T){ ev[k]=90; ev[k+1]=160; ev[k+2]=255; }
     else { ev[k]=ev[k+1]=ev[k+2]=0; }
     ev[k+3]=255;
-    if (diff > 18 || diff < -18){ const cx = (i % 64) >> 3, cy = (i / 64 | 0) >> 3; cells[cy*8 + cx]++; }
+    if (diff > T || diff < -T) cells[(((i / w) | 0) / cellPx | 0)*cols + (((i % w) / cellPx) | 0)]++;
   }
+}
+function readVision(){
+  if (!camStream || video.readyState < 2){ for (let i=0;i<OFF_A;i++) x[i]=0; return; }
+  gctx.drawImage(video, 0, 0, VW, VH);
+  const vw = video.videoWidth || VW, vh = video.videoHeight || VH;
+  fctx.drawImage(video, vw*FX0/VW, vh*FY0/VH, vw*(FX1-FX0)/VW, vh*(FY1-FY0)/VH, 0, 0, FW, FH);
+  const cells = new Float32Array(IN_V), fcells = new Float32Array(IN_F);
+  retina(gctx, VW, VH, retW, evImg, cells, 8, 8);
+  retina(fctx, FW, FH, retF, fvImg, fcells, 6, 8);
   ectx.putImageData(evImg, 0, 0);
-  prevGray = gray;
+  ectx.strokeStyle = "rgba(120,220,255,0.35)"; ectx.lineWidth = 1;      // dove sta la fovea
+  ectx.strokeRect(FX0 + 0.5, FY0 + 0.5, FX1 - FX0 - 1, FY1 - FY0 - 1);
+  fvctx.putImageData(fvImg, 0, 0);
   for (let i=0;i<IN_V;i++) visIn[i] = x[i] = Math.min(1, cells[i] / 20);
+  for (let i=0;i<IN_F;i++) visIn[IN_V+i] = x[OFF_F+i] = Math.min(1, fcells[i] / 20);
   drawEyeBig();
 }
 
-// la vista ingrandita: gli stessi eventi, più le 48 zone (8 x 6) che arrivano ai neuroni
-const visIn = new Float32Array(IN_V);
+// la vista ingrandita: gli stessi eventi, le 48 zone (8 x 6) e, al centro, la fovea con le sue 24 zone (6 x 4)
+const visIn = new Float32Array(IN_V + IN_F);
 const eyeBigEl = document.getElementById("eyeBig"), ebig = document.getElementById("eyesBig"), ebctx = ebig.getContext("2d");
 let eyeBigOpen = false;
 function sizeEyeBig(){
@@ -233,6 +268,19 @@ function drawEyeBig(){
     ebctx.strokeStyle = `rgba(255,211,77,${0.3 + 0.7*v})`; ebctx.lineWidth = lw*(1 + 4*v);
     ebctx.strokeRect(i*cw + 3*lw, j*ch + 3*lw, cw - 6*lw, ch - 6*lw);
   }
+  // la fovea: i suoi punti più fini al loro posto, e le sue 24 zone
+  const fx = W*FX0/VW, fy = H*FY0/VH, fw = W*(FX1-FX0)/VW, fh = H*(FY1-FY0)/VH, fcw = fw/6, fch = fh/4;
+  ebctx.drawImage(fovEl, fx, fy, fw, fh);
+  ebctx.strokeStyle = "rgba(120,220,255,0.18)"; ebctx.lineWidth = lw; ebctx.beginPath();
+  for (let i=1;i<6;i++){ ebctx.moveTo(fx + i*fcw, fy); ebctx.lineTo(fx + i*fcw, fy + fh); }
+  for (let j=1;j<4;j++){ ebctx.moveTo(fx, fy + j*fch); ebctx.lineTo(fx + fw, fy + j*fch); }
+  ebctx.stroke();
+  for (let j=0;j<4;j++) for (let i=0;i<6;i++){
+    const v = visIn[IN_V + j*6 + i]; if (v < 0.03) continue;
+    ebctx.strokeStyle = `rgba(120,220,255,${0.35 + 0.65*v})`; ebctx.lineWidth = lw*(1 + 3*v);
+    ebctx.strokeRect(fx + i*fcw + 2*lw, fy + j*fch + 2*lw, fcw - 4*lw, fch - 4*lw);
+  }
+  ebctx.strokeStyle = "rgba(120,220,255,0.7)"; ebctx.lineWidth = lw*1.5; ebctx.strokeRect(fx, fy, fw, fh);
 }
 function openEyeBig(){ eyeBigOpen = true; eyeBigEl.classList.remove("hidden"); sizeEyeBig(); drawEyeBig(); }
 function closeEyeBig(){ eyeBigOpen = false; eyeBigEl.classList.add("hidden"); }
@@ -307,7 +355,7 @@ function shapeFromBytes(fq, sr, fftSize, f0, out){
 // alla rete arriva la sagoma per differenza (cosa c'è di più o di meno della media), come fa l'inibizione laterale dell'orecchio
 function encodeShape(){ let m = 0; for (let b=0;b<IN_S;b++) m += sin[b]; m /= IN_S; for (let b=0;b<IN_S;b++) x[OFF_S+b] = m > 0 ? sin[b] - m : 0; }
 function readHearing(){
-  if (!analyser){ for (let i=0;i<IN_A;i++){ x[IN_V+i]=0; earBars[i].style.height="1px"; } heardF = 0; heardClar = 0; encodePitch(0,0); sin.fill(0); encodeShape(); return; }
+  if (!analyser){ for (let i=0;i<IN_A;i++){ x[OFF_A+i]=0; earBars[i].style.height="1px"; } heardF = 0; heardClar = 0; encodePitch(0,0); sin.fill(0); encodeShape(); return; }
   [heardF, heardClar] = detectPitch(); encodePitch(heardF, heardClar);
   analyser.getByteFrequencyData(freq);
   shapeFromBytes(freq, audioCtx.sampleRate, analyser.fftSize, heardF, sin); encodeShape();
@@ -317,7 +365,7 @@ function readHearing(){
     let s=0; for (let k=a;k<z;k++) s+=freq[k]; const e = s / (z-a) / 255;
     bandBase[b] = bandBase[b]*0.98 + e*0.02;
     const v = Math.max(0, Math.min(1, (e - bandBase[b]) * 4));
-    x[IN_V+b] = v; earBars[b].style.height = (1 + v*19) + "px";
+    x[OFF_A+b] = v; earBars[b].style.height = (1 + v*19) + "px";
   }
 }
 function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i]*0.8; x[OFF_T+i] = touch[i]; } }
@@ -325,7 +373,7 @@ function readTouch(){ for (let i=0;i<IN_T;i++){ touch[i] = held[i] ? 1 : touch[i
 // ogni senso pesa allo stesso modo: 48 pixel di vista non coprono 4 punti di tatto
 function balanceSenses(){
   // la sagoma del suono (la vocale) pesa un po' di più dell'altezza: come i bambini, conta più cosa si dice che su che nota
-  for (const [a, b, on, len] of [[0, IN_V, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 1], [OFF_S, OFF_T, 0.05, 1.5], [OFF_T, N_IN, 0.2, 1]]){
+  for (const [a, b, on, len] of [[0, OFF_A, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 1], [OFF_S, OFF_T, 0.05, 1.5], [OFF_T, N_IN, 0.2, 1]]){
     let s = 0; for (let i=a;i<b;i++) s += x[i]*x[i]; s = Math.sqrt(s);
     const k = s > on ? Math.min(len, s) / s : 0;   // attivo: lunghezza fino a 1 (1,5 per la sagoma); troppo debole: zero
     for (let i=a;i<b;i++) x[i] *= k;
@@ -1031,6 +1079,13 @@ function serialize(){
                w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
     }) });
 }
+// come erano disposti gli ingressi nelle versioni precedenti (V vista, A bande, P altezza, S sagoma, T tatto)
+const OLD_LAYOUTS = {
+  104: [["V",48],["A",16],["P",24],["S",12],["T",4]],    // prima della fovea
+  92:  [["V",48],["A",16],["P",24],["T",4]],             // prima della sagoma
+  68:  [["V",48],["A",16],["T",4]],                      // prima dell'altezza
+};
+const NEW_OFF = { V:0, F:OFF_F, A:OFF_A, P:OFF_P, S:OFF_S, T:OFF_T };
 function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
@@ -1043,8 +1098,7 @@ function deserialize(text){
     const q = new Int8Array(unb64(s.w).buffer);
     const w = new Float32Array(N_IN);
     if (q.length === N_IN) for (let i=0;i<N_IN;i++) w[i] = q[i]/127;
-    else if (q.length === 92){ for (let i=0;i<88;i++) w[i] = q[i]/127; for (let i=0;i<4;i++) w[OFF_T+i] = q[88+i]/127; }  // rete di prima: senza sagoma
-    else if (q.length === 68){ for (let i=0;i<64;i++) w[i] = q[i]/127; for (let i=0;i<4;i++) w[OFF_T+i] = q[64+i]/127; }  // rete di prima ancora: senza altezza
+    else if (OLD_LAYOUTS[q.length]){ let o = 0; for (const [k, n] of OLD_LAYOUTS[q.length]){ for (let i=0;i<n;i++) w[NEW_OFF[k]+i] = q[o+i]/127; o += n; } }
     else throw new Error("file non valido");
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
@@ -1094,7 +1148,7 @@ addEventListener("pagehide", saveSync);
 let wakeLock = null;
 async function startCamera(){
   if (camStream) camStream.getTracks().forEach(t => t.stop());
-  camStream = null; prevGray = null;
+  camStream = null; retW.prev = retF.prev = null; retW.noise = retF.noise = undefined;
   try {
     camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ideal:320}, height:{ideal:240} } });
     video.srcObject = camStream; await video.play();

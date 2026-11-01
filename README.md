@@ -2,7 +2,8 @@
 
 Una rete neurale spiking che cresce mentre vive, come web app per il telefono.
 
-- **Sensi**: vista a eventi dalla fotocamera (vede solo ciò che si muove), udito dal microfono in 16 bande, tatto con quattro pulsanti.
+- **Sensi**: vista a eventi dalla fotocamera (vede solo ciò che si muove), udito dal microfono, tatto con quattro pulsanti.
+- **Vista**: come una retina, risponde ai cambiamenti di luce in proporzione (in logaritmo), quindi vede allo stesso modo in una stanza buia e in una illuminata; ignora il cambiamento comune a tutta l'immagine (la fotocamera che regola l'esposizione) e, come la retina al buio, alza la soglia quando il sensore è rumoroso. Tutta l'immagine arriva ai neuroni come 48 zone; al centro c'è una fovea con il doppio dei dettagli, altre 24 zone più piccole. Vista e fovea insieme pesano come un solo senso.
 - **Impulsi**: ogni neurone accumula potenziale e scarica quando supera la soglia; l'impulso viaggia lungo le sinapsi verso gli altri neuroni.
 - **Sinapsi**: i neuroni che scaricano uno dopo l'altro rafforzano la connessione (regola STDP con traccia che svanisce in circa mezzo secondo); quelle non usate si indeboliscono e spariscono.
 - **Sensi bilanciati**: vista, udito e tatto pesano allo stesso modo quando sono attivi.
