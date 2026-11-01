@@ -587,6 +587,8 @@ function balanceSenses(){
 let voiceOn = true, M = null;
 const mh = new Float32Array(N_MOT), mr = new Float32Array(N_MOT), madapt = new Float32Array(N_MOT);
 const mIn = new Float32Array(N_MOT), mInT = new Float32Array(N_MOT), mz = new Float32Array(N_MOT);
+const rawP = new Float32Array(N_PITCH), rawH = new Float32Array(N_PITCH);   // spinta della rete sulle corde vocali, e a cosa si sono abituate
+let needAir = false;                                                        // il fiato è finito: deve riprendere aria prima di poter parlare
 let speakStart = 0, lastSpeechEnd = -99, speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
 const art = { J:0.45, T:0.5, L:0.2, V:0.05, B:0.05 };     // posizioni attuali dei muscoli della bocca
 let cpgA = 0.6, cpgB = 0, cpgaA = 0, cpgaB = 0, rhythmOn = false, prevOpen = 1, mouthNow = null;
@@ -632,18 +634,20 @@ function ensureVoice(){
 // Una traccia più lunga (e2, 0,5-2 s dopo) impara cosa succede dopo che ha parlato, per esempio una risposta (F2).
 // Ciò che arriva come annunciato da F1 è la sua voce; il resto viene da fuori.
 const e1 = new Float32Array(N_MOT), e2 = new Float32Array(N_MOT), P1 = new Float32Array(N_AUD), P2 = new Float32Array(N_AUD);
+const F1s = new Float32Array(N_MOT*N_AUD), F2s = new Float32Array(N_MOT*N_AUD);   // il modello com'era all'inizio del verso
 const aud = new Float32Array(N_AUD);         // ciò che sente davvero: altezza e sagoma
 const rHist = [];
 function newVoiceMind(){ return { F1:new Float32Array(N_MOT*N_AUD), F2:new Float32Array(N_MOT*N_AUD), G1:new Float32Array(N_MOT*N_AUD), G2:new Float32Array(N_MOT*N_AUD), voglia:0.5, prog:0 }; }
 
 // ---- voglia di parlare = progresso nell'imparare ----
-// Ogni verso è un'esperienza: confronta quanto la previsione di adesso (F) sbaglia rispetto a quella di qualche verso fa (G),
-// sulla stessa identica esperienza. Se adesso prevede meglio, ha imparato: la voglia sale. Se no, torna piano verso la calma.
-// Un rumore che non si può imparare fa sbagliare allo stesso modo sia F sia G, quindi non dà voglia.
+// Ogni verso è un'esperienza: confronta quanto sbaglia il modello com'era all'inizio del verso (F, prima di adattarsi
+// a quel suono) rispetto a quello di qualche verso fa (G), sulla stessa identica esperienza. Se prevede meglio, ha imparato
+// qualcosa che è rimasto da un verso all'altro: la voglia sale. Se no, torna piano verso la calma.
+// Adattarsi al suono mentre lo fa non conta come imparare; e un rumore che non si può imparare non dà voglia.
 let ep = { on:false, cur:null };
 function closeEpisode(){
   const c = ep.cur; ep.cur = null; const V = net.voice; if (!c || c.n < 5) return;
-  const prog = (c.eo - c.e) / (c.eo + 0.5);
+  const prog = Math.max(-1, (c.eo - c.e) / (c.eo + 0.5));          // un verso andato storto non pesa per dieci
   V.prog += (prog - V.prog)*0.2;                                   // media su più versi: il rumore si annulla
   V.voglia = Math.min(1, V.voglia + 0.6*Math.max(0, V.prog - 0.15)); // conta solo un progresso vero, non le limature
   for (let i=0;i<V.F1.length;i++){ V.G1[i] += 0.15*(V.F1[i] - V.G1[i]); V.G2[i] += 0.15*(V.F2[i] - V.G2[i]); }
@@ -653,12 +657,18 @@ function voiceStep(firedNow){
   const V = net.voice;
   // la rete spinge i neuroni motori che conosce. Le corde vocali: tanto più quanto ha voglia di parlare,
   // e pochissimo mentre sta già parlando. La bocca: anche mentre parla, perché è così che si articola
-  mIn.fill(0);
+  mIn.fill(0); rawP.fill(0);
   const gIn = speaking ? 0.04 : 0.35*V.voglia;
   for (const n of firedNow){
-    for (let k=0;k<N_PITCH;k++) mIn[k] += n.mw[k]*gIn;
+    for (let k=0;k<N_PITCH;k++) rawP[k] += n.mw[k];
     for (let k=N_PITCH;k<N_MOT;k++) mIn[k] += n.mw[k]*0.3;
   }
+  // come ogni neurone, le corde vocali si abituano in pochi secondi a una spinta che resta sempre uguale:
+  // conta ciò che cambia (per esempio un suono nuovo da rifare), non il brusio di fondo della rete
+  for (let k=0;k<N_PITCH;k++){ rawH[k] = 0.99*rawH[k] + 0.01*rawP[k]; mIn[k] = Math.max(0, rawP[k] - rawH[k])*gIn; }
+  // e la spinta ha un tetto: conta quale nota vuole la rete, non quanti neuroni la spingono insieme
+  // (con migliaia di neuroni la somma schiacciava la voce su quasi tutte le note)
+  { let D = 0; for (let k=0;k<N_PITCH;k++) D += mIn[k]; if (D > 0){ const sc = 1/(1 + D/0.8); for (let k=0;k<N_PITCH;k++) mIn[k] *= sc; } }
   for (let k=N_PITCH;k<N_MOT;k++) mInT[k] = 0.8*mInT[k] + mIn[k];
   // ---- corde vocali ----
   let R = 0; for (let k=0;k<N_PITCH;k++) R += mr[k];
@@ -696,7 +706,10 @@ function voiceStep(firedNow){
   // ---- il suono ----
   const was = speaking;
   const loud = Math.max(0, Math.min(1, (S - 0.6)/1.6));
-  speaking = voiceOn && running && loud > 0.15;                  // le accensioni deboli che non decollano restano mute
+  // senza aria non c'è voce: quando il fiato finisce la voce si ferma davvero, e prima di ripartire
+  // deve riprendere un po' d'aria (circa un secondo e mezzo)
+  if (breath <= 0.02) needAir = true; else if (breath >= 0.35) needAir = false;
+  speaking = voiceOn && running && loud > 0.15 && !needAir;      // le accensioni deboli che non decollano restano mute
   loudNow = speaking ? loud : 0;
   if (S > 0.2) voiceF = Math.pow(2, lf/S);
   voiceAmp = speaking ? 0.28*loud*Math.min(1, breath*3) : 0;
@@ -739,6 +752,7 @@ function sayingNow(){
 // previsione di ciò che sentirà, confronto con ciò che sente davvero, e apprendimento
 function selfListen(firedNow){
   const V = net.voice;
+  if (speaking && !ep.on){ F1s.set(V.F1); F2s.set(V.F2); }        // comincia un verso: si tiene da parte il modello com'è adesso
   // la copia del gesto: corde vocali come sono; bocca e ritmo solo mentre c'è voce (senza voce la bocca non fa suono)
   const g = Float32Array.from(mr); for (let k=N_PITCH;k<N_MOT;k++) g[k] *= loudNow;
   for (let k=0;k<N_MOT;k++) e1[k] = 0.7*e1[k] + 0.3*g[k];
@@ -749,17 +763,17 @@ function selfListen(firedNow){
   if (!analyser){ ep.cur = null; ep.on = false; return; }
   let act = 0, n2 = 0.05; for (let k=0;k<N_MOT;k++){ act += e1[k] + e2[k]; n2 += e1[k]*e1[k] + e2[k]*e2[k]; }
   P1.fill(0); P2.fill(0);
-  let E = 0, Eold = 0, sp = 0, mineSum = 0, ext = 0;
+  let Es = 0, Eold = 0, sp = 0, mineSum = 0, ext = 0;
   for (let p=0;p<N_AUD;p++){
-    let q1 = 0, q2 = 0, o = 0;
+    let q1 = 0, q2 = 0, o = 0, qs = 0;
     for (let m=0;m<N_MOT;m++){
       const i = m*N_AUD + p;
-      if (e1[m] > 1e-3){ q1 += e1[m]*V.F1[i]; o += e1[m]*V.G1[i]; }
-      if (e2[m] > 1e-3){ q2 += e2[m]*V.F2[i]; o += e2[m]*V.G2[i]; }
+      if (e1[m] > 1e-3){ q1 += e1[m]*V.F1[i]; o += e1[m]*V.G1[i]; qs += e1[m]*F1s[i]; }
+      if (e2[m] > 1e-3){ q2 += e2[m]*V.F2[i]; o += e2[m]*V.G2[i]; qs += e2[m]*F2s[i]; }
     }
     P1[p] = q1; P2[p] = q2;
-    const err = aud[p] - q1 - q2, errOld = aud[p] - o;
-    E += err*err; Eold += errOld*errOld;
+    const errS = aud[p] - qs, errOld = aud[p] - o;                 // il modello di inizio verso e quello di qualche verso fa
+    Es += errS*errS; Eold += errOld*errOld;
     sp += aud[p]; mineSum += Math.min(aud[p], q1); ext += Math.max(0, aud[p] - q1);
   }
   // è la mia voce? quanto di ciò che sento era stato annunciato dal mio gesto
@@ -790,7 +804,7 @@ function selfListen(firedNow){
   // episodi: un verso e i 2 secondi dopo
   if (speaking && !ep.on){ if (ep.cur) closeEpisode(); ep.on = true; ep.cur = { e:0, eo:0, n:0, end:-1 }; }
   if (ep.cur){
-    if (act > 0.1){ ep.cur.e += E; ep.cur.eo += Eold; ep.cur.n++; }
+    if (act > 0.1){ ep.cur.e += Es; ep.cur.eo += Eold; ep.cur.n++; }
     if (!speaking && ep.on){ ep.on = false; ep.cur.end = net.life; }
     if (!ep.on && ep.cur.end >= 0 && net.life - ep.cur.end >= 40) closeEpisode();
   }
@@ -1395,7 +1409,7 @@ function saveSlice(budget){
   idbPut(data).then(() => { if (!saveJob) savedState(data.length); }).catch(() => {});
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ saveJob = null; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ saveJob = null; rawH.fill(0); needAir = false; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
