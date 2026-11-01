@@ -346,7 +346,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 22;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 23;                // la versione dell'app (la stessa della memoria del service worker)
 const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
 const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
@@ -637,7 +637,7 @@ function balanceSenses(){
 let voiceOn = true, M = null;
 const mh = new Float32Array(N_MOT), mr = new Float32Array(N_MOT), madapt = new Float32Array(N_MOT);
 const mIn = new Float32Array(N_MOT), mInT = new Float32Array(N_MOT), mz = new Float32Array(N_MOT);
-const rawP = new Float32Array(N_PITCH), rawH = new Float32Array(N_PITCH);   // spinta della rete sulle corde vocali, e a cosa si sono abituate
+const rawM = new Float32Array(N_MOT), rawH = new Float32Array(N_MOT);       // spinta della rete sui neuroni motori, e a cosa si sono abituati
 let needAir = false;                                                        // il fiato è finito: deve riprendere aria prima di poter parlare
 let speakStart = 0, lastSpeechEnd = -99, speaking = false, voiceF = 0, voiceAmp = 0, lastExternal = -999, voiceKind = "", selfSeen = 0, breath = 1, loudNow = 0;
 const art = { J:0.45, T:0.5, L:0.2, V:0.05, B:0.05 };     // posizioni attuali dei muscoli della bocca
@@ -808,21 +808,27 @@ function closeEpisode(){
 
 function voiceStep(firedNow){
   const V = net.voice;
-  // la rete spinge i neuroni motori che conosce. Le corde vocali: tanto più quanto ha voglia di parlare,
-  // e pochissimo mentre sta già parlando. La bocca: anche mentre parla, perché è così che si articola
-  mIn.fill(0); rawP.fill(0);
-  const gIn = speaking ? 0.04 : 0.35*V.voglia;
+  // la rete spinge i neuroni motori che conosce: corde vocali, muscoli della bocca e ritmo delle sillabe
+  mIn.fill(0); rawM.fill(0);
   for (const n of firedNow){
     if (n.inh) continue;                                  // i gesti della voce li comandano gli eccitatori
-    for (let k=0;k<N_PITCH;k++) rawP[k] += n.mw[k];
-    for (let k=N_PITCH;k<N_MOT;k++) mIn[k] += n.mw[k]*0.3;
+    for (let k=0;k<N_MOT;k++) rawM[k] += n.mw[k];
   }
-  // come ogni neurone, le corde vocali si abituano in pochi secondi a una spinta che resta sempre uguale:
+  // come ogni neurone, i neuroni motori si abituano in pochi secondi a una spinta che resta sempre uguale:
   // conta ciò che cambia (per esempio un suono nuovo da rifare), non il brusio di fondo della rete
-  for (let k=0;k<N_PITCH;k++){ rawH[k] = 0.99*rawH[k] + 0.01*rawP[k]; mIn[k] = Math.max(0, rawP[k] - rawH[k])*gIn; }
-  // e la spinta ha un tetto: conta quale nota vuole la rete, non quanti neuroni la spingono insieme
-  // (con migliaia di neuroni la somma schiacciava la voce su quasi tutte le note)
-  { let D = 0; for (let k=0;k<N_PITCH;k++) D += mIn[k]; if (D > 0){ const sc = 1/(1 + D/0.8); for (let k=0;k<N_PITCH;k++) mIn[k] *= sc; } }
+  for (let k=0;k<N_MOT;k++){ rawH[k] = 0.99*rawH[k] + 0.01*rawM[k]; mIn[k] = Math.max(0, rawM[k] - rawH[k]); }
+  // corde vocali: tanto più quanto ha voglia di parlare, e pochissimo mentre sta già parlando
+  const gIn = speaking ? 0.04 : 0.35*V.voglia;
+  for (let k=0;k<N_PITCH;k++) mIn[k] *= gIn;
+  for (let k=N_PITCH;k<N_MOT;k++) mIn[k] *= 0.3;
+  // e la spinta ha un tetto: conta quale nota (o quale posizione di ogni muscolo) vuole la rete, non quanti neuroni la spingono.
+  // Senza, con migliaia di neuroni la somma schiacciava la voce su quasi tutte le note, e la bocca su un gesto solo:
+  // il gesto più frequente lo imparavano sempre più neuroni, che lo spingevano sempre di più (una rete diceva solo «mu»)
+  const cap = (a, n) => { let D = 0; for (let k=a;k<a+n;k++) D += mIn[k]; if (D > 0){ const sc = 1/(1 + D/0.8); for (let k=a;k<a+n;k++) mIn[k] *= sc; } };
+  cap(0, N_PITCH); for (const a of ART) cap(a.off, a.n); cap(RHY, 1);
+  // mentre parla la rete spinge poco anche la bocca: sceglie come comincia il verso, poi la bocca va da sola
+  // con il suo rumore lento e la stanchezza. Il ritmo delle sillabe invece lo può accendere anche mentre parla
+  if (speaking) for (let k=N_PITCH;k<RHY;k++) mIn[k] *= 0.1;
   for (let k=N_PITCH;k<N_MOT;k++) mInT[k] = 0.8*mInT[k] + mIn[k];
   // ---- corde vocali ----
   let R = 0; for (let k=0;k<N_PITCH;k++) R += mr[k];
