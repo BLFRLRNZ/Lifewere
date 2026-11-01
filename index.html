@@ -226,6 +226,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
       <div>nati<b id="sB">0</b></div>
       <div>potati<b id="sP">0</b></div>
       <div>vita<b id="sL">0s</b></div>
+      <div>inibitori<b id="sI">0</b></div>
     </div>
   </aside>
   <div id="stage">
@@ -345,7 +346,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 19;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 20;                // la versione dell'app (la stessa della memoria del service worker)
 const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
 const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
@@ -355,6 +356,10 @@ const MAX_NEURONS = 10000;        // tetto di sicurezza per il salvataggio (circ
 // il limite vero è la fatica: la rete cresce finché il telefono riesce a calcolarla in tempo
 const MIN_NEURONS = 4;            // non scende mai sotto
 const MAX_SYN = 12;               // sinapsi in uscita per neurone
+// neuroni inibitori: come nella corteccia, circa uno su cinque. Quando si accendono frenano i neuroni a cui sono collegati,
+// e le loro sinapsi imparano da sole: crescono verso i neuroni che si accendono insieme a loro, calano verso quelli che tacciono.
+// Così l'attività resta rada e un'accensione non può più allargarsi a centinaia di neuroni come un'onda
+const INH_TARGET = 0.2, INH_GAIN = 1.2, ISTDP = 0.06, ISTDP_A = 0.2;
 const HZ = 20;                    // passi al secondo
 const YOUNG_PRUNE = HZ * 60 * 10; // un neurone giovane mai più usato davvero per 10 minuti di vita viene potato
 const STABLE_AFTER = 3;           // usato davvero in 3 occasioni diverse: si stabilizza e resta
@@ -393,10 +398,11 @@ function fresh(){
     const a = i / MIN_NEURONS * Math.PI * 2;
     n.neurons.push(makeNeuron(n, randUnit(), tones[i], -1, Math.cos(a)*0.2, (Math.random()-0.5)*0.2, Math.sin(a)*0.2));
   }
+  n.neurons[MIN_NEURONS - 1].inh = true; n.firsts.inh = 1;      // uno dei quattro neuroni di partenza è inibitorio
   return n;
 }
 function makeNeuron(n, w, f, parent, x, y, z){
-  return { id:n.nextId++, p:parent, w, f, th:1, v:0, last:n.life, born:n.life, occ:0, stable:false, use:0, kick:0, inTr:false, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
+  return { id:n.nextId++, p:parent, inh:false, w, f, th:1, v:0, last:n.life, born:n.life, occ:0, stable:false, use:0, kick:0, inTr:false, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
            x, y, z, vx:0, vy:0, vz:0, flash:0, s:0 };
 }
 // un neurone nuovo di zecca ascolta pochi ingressi a caso, non tutti: altrimenti risponderebbe un po' a ogni cosa
@@ -691,6 +697,7 @@ function voiceStep(firedNow){
   mIn.fill(0); rawP.fill(0);
   const gIn = speaking ? 0.04 : 0.35*V.voglia;
   for (const n of firedNow){
+    if (n.inh) continue;                                  // i gesti della voce li comandano gli eccitatori
     for (let k=0;k<N_PITCH;k++) rawP[k] += n.mw[k];
     for (let k=N_PITCH;k<N_MOT;k++) mIn[k] += n.mw[k]*0.3;
   }
@@ -817,7 +824,7 @@ function selfListen(firedNow){
   if (selfness > 0.3){
     let mx = 0; for (let k=0;k<N_MOT;k++) if (e1[k] > mx) mx = e1[k];
     if (mx > 0.05) for (const n of firedNow){
-      if (audioShare(n) < 0.3) continue;
+      if (n.inh || audioShare(n) < 0.3) continue;
       for (let k=0;k<N_MOT;k++) n.mw[k] += 0.1*selfness*(e1[k]/mx - n.mw[k]);
     }
   }
@@ -880,7 +887,7 @@ function stepInner(){
   const awake = e > 0.35;
   if (awake){
     for (let i=0;i<N_IN;i++) xn[i] = x[i]/e;
-    for (const n of N){ n.s = dot(n.w, xn); if (n.s > bs){ bs = n.s; best = n; } }
+    for (const n of N){ n.s = dot(n.w, xn); if (!n.inh && n.s > bs){ bs = n.s; best = n; } }   // l'esperienza la rappresentano gli eccitatori
     novNow = 1 - Math.max(0, bs);
     novelty = novelty*0.8 + novNow*0.2;
   } else { novelty *= 0.95; for (const n of N) n.s = 0; }
@@ -894,7 +901,10 @@ function stepInner(){
   for (const f of flights){
     if (net.life >= f.t0 + f.dur){
       const t = byId.get(f.to);
-      if (t){ t.v += f.w * 0.55; t.pred += f.w; if (pending.length < 1500) pending.push({ from:f.from, to:f.to, w:f.w, t:net.life }); }
+      if (t){
+        if (f.inh) t.v -= f.w * INH_GAIN;                 // un impulso inibitorio frena; non annuncia niente
+        else { t.v += f.w * 0.55; t.pred += f.w; if (pending.length < 1500) pending.push({ from:f.from, to:f.to, w:f.w, t:net.life }); }
+      }
     }
     else still.push(f);
   }
@@ -923,19 +933,27 @@ function stepInner(){
     // gli annunci verso di me si sono avverati: quelle sinapsi avevano ragione
     pending = pending.filter(q => { if (q.to !== n.id) return true; const a = byId.get(q.from); if (a) strengthen(a, n, 0.03); kept += q.w*q.w; return false; });
     const real = (n.v - n.kick) > 0.5*n.th;       // scarica per qualcosa di vero (sensi o sinapsi), non solo per un sogno
-    n.v = 0; n.th += 0.15; n.fires++; n.lastFire = net.life; n.flash = 1;
+    n.v = 0; n.th += n.inh ? 0.05 : 0.15; n.fires++; n.lastFire = net.life; n.flash = 1;   // gli inibitori si stancano poco
     if (real) useNeuron(n);
     if (awake){ const lr = n === best ? 0.08 : 0.01; for (let i=0;i<N_IN;i++) n.w[i] += lr*(xn[i]-n.w[i]); normalize(n.w); }
-    // STDP: chi ha scaricato poco prima di me (traccia ancora viva) rafforza la sinapsi verso di me
+    // STDP: chi ha scaricato poco prima di me (traccia ancora viva) rafforza la sinapsi verso di me.
+    // Se era un inibitorio, cresce la sua inibizione verso di me (si accendeva insieme a me: è a me che deve frenare)
     for (const m of traced){
       if (m === n || m.lastFire === net.life) continue;
-      strengthen(m, n, 0.08 * m.tr);
-      weaken(n, m, 0.05 * m.tr);
+      strengthen(m, n, (m.inh ? ISTDP : 0.08) * m.tr);
+      if (!n.inh) weaken(n, m, 0.05 * m.tr);
     }
-    // l'impulso parte lungo tutte le sinapsi in uscita
+    // un inibitorio che scarica: le sue sinapsi crescono verso chi è attivo in questo momento e calano verso chi tace,
+    // e ne nascono di nuove verso gli eccitatori che si sono appena accesi
+    if (n.inh){
+      for (const s of n.syn){ const t = byId.get(s.t); if (t) s.w = Math.max(0, Math.min(1, s.w + ISTDP*(t.tr - ISTDP_A))); }
+      for (const m of traced) if (!m.inh && m !== n && m.tr > ISTDP_A && !n.syn.some(q => q.t === m.id)) strengthen(n, m, ISTDP * m.tr);
+    }
+    // l'impulso parte lungo tutte le sinapsi in uscita (quello degli inibitori è più veloce: sono neuroni vicini e rapidi)
     for (const s of n.syn){
       const t = byId.get(s.t); if (!t || s.w < 0.05) continue;
-      if (flights.length < 900) flights.push({ from:n.id, to:t.id, w:s.w, t0:net.life, dur: Math.max(2, Math.round(2 + dist3(n,t)*18)) });
+      const dur = n.inh ? Math.max(1, Math.round(1 + dist3(n,t)*6)) : Math.max(2, Math.round(2 + dist3(n,t)*18));
+      if (flights.length < 900) flights.push({ from:n.id, to:t.id, w:s.w, t0:net.life, dur, inh: n.inh });
     }
   }
   for (const n of firedNow){ n.tr = 1; if (!n.inTr){ n.inTr = true; traced.push(n); } }
@@ -1013,6 +1031,11 @@ function divide(parent){
   let f = parent.f * Math.pow(2, semis/12); if (f < 110) f *= 2; if (f > 1760) f /= 2;
   const j = () => (Math.random()-0.5)*0.06;
   const c = makeNeuron(net, w, f, parent.id, parent.x + j(), parent.y + j(), parent.z + j());
+  // circa un nuovo neurone su cinque nasce inibitorio; se sono pochi ne nascono di più, se sono tanti di meno
+  let nI = 0; for (const m of net.neurons) if (m.inh) nI++;
+  const fracI = nI / Math.max(1, net.neurons.length);
+  c.inh = Math.random() < Math.max(0.05, Math.min(0.6, INH_TARGET + 2*(INH_TARGET - fracI)));
+  if (c.inh && net.firsts && !net.firsts.inh){ net.firsts.inh = 1; addMoment("crescita", "È nato il primo neurone inibitorio: frena i vicini quando si accendono troppi insieme"); }
   c.flash = 1;
   c.syn = parent.syn.map(s => ({ t:s.t, w:s.w*0.5 }));
   for (let k=0;k<N_MOT;k++) c.mw[k] = parent.mw[k]*0.5 + Math.random()*0.05;   // eredita metà delle connessioni del genitore
@@ -1228,13 +1251,14 @@ function renderStatic(){
     bctx.stroke();
   }
   // neuroni a riposo: trasparenti. Il contorno è più visibile per quelli stabili
-  const groups = new Array(24);
-  for (const n of N){ const g = ((hueOf(n)/30)|0)*2 + (n.stable ? 1 : 0); (groups[g] || (groups[g] = [])).push(n); }
-  for (let g=0; g<24; g++){
+  const groups = new Array(25);
+  for (const n of N){ const g = n.inh ? 24 : ((hueOf(n)/30)|0)*2 + (n.stable ? 1 : 0); (groups[g] || (groups[g] = [])).push(n); }
+  for (let g=0; g<25; g++){
     const L = groups[g]; if (!L) continue;
     const h = (g>>1)*30 + 15, st = g & 1;
     bctx.beginPath();
     for (const n of L){ bctx.moveTo(n.sx + n.r, n.sy); bctx.arc(n.sx, n.sy, n.r, 0, TAU); }
+    if (g === 24){ bctx.fillStyle = "rgba(90,150,255,0.14)"; bctx.fill(); bctx.strokeStyle = "rgba(120,175,255,0.6)"; bctx.lineWidth = DPR; bctx.stroke(); continue; }   // inibitori
     bctx.fillStyle = `hsla(${h},55%,50%,${st ? 0.12 : 0.06})`; bctx.fill();
     bctx.strokeStyle = `hsla(${h},60%,65%,${st ? 0.5 : 0.22})`; bctx.lineWidth = DPR; bctx.stroke();
   }
@@ -1261,29 +1285,29 @@ function drawScene(now){
   const t = net.life + (running ? Math.min(1, (now - lastStepAt)/(1000/HZ)) : 0);
 
   // sinapsi accese: quelle su cui sta passando un impulso. Più la sinapsi è forte, più si accende; si spegne quando l'impulso arriva
-  const lit = [[],[],[],[],[]];
+  const lit = [[],[],[],[],[]], litI = [[],[],[],[],[]];       // impulsi eccitatori (gialli) e inibitori (azzurri)
   let count = 0;
   for (const f of flights){
     if (count >= Q_FLIGHTS[Q]) break;
     const a = byId.get(f.from), b = byId.get(f.to); if (!a || !b) continue;
     const I = f.w * Math.max(0, 1 - (t - f.t0)/(f.dur + 2));
     if (I < 0.05) continue;
-    lit[Math.min(4, (I*5)|0)].push(a, b); count++;
+    (f.inh ? litI : lit)[Math.min(4, (I*5)|0)].push(a, b); count++;
   }
   ctx.globalCompositeOperation = Q <= 1 ? "lighter" : "source-over";
-  for (let k=0;k<5;k++){
-    const L = lit[k]; if (!L.length) continue;
-    ctx.strokeStyle = `rgba(255,214,110,${0.4 + k*0.15})`; ctx.lineWidth = (1.1 + k*0.4)*DPR;
+  for (const [B, col] of [[lit, "255,214,110"], [litI, "110,170,255"]]) for (let k=0;k<5;k++){
+    const L = B[k]; if (!L.length) continue;
+    ctx.strokeStyle = `rgba(${col},${0.4 + k*0.15})`; ctx.lineWidth = (1.1 + k*0.4)*DPR;
     ctx.beginPath();
     for (let i=0;i<L.length;i+=2){ ctx.moveTo(L[i].sx, L[i].sy); ctx.lineTo(L[i+1].sx, L[i+1].sy); }
     ctx.stroke();
   }
   // neuroni al lavoro: si accendono quando scaricano e si spengono in un attimo
-  const on = [[],[],[],[]];
-  for (const n of net.neurons){ const age = t - n.lastFire; if (age >= 0 && age < 6) on[Math.min(3, ((1 - age/6)*4)|0)].push(n); }
-  for (let k=0;k<4;k++){
-    const L = on[k]; if (!L.length) continue;
-    ctx.fillStyle = `rgba(255,230,150,${0.22 + k*0.24})`;
+  const on = [[],[],[],[]], onI = [[],[],[],[]];
+  for (const n of net.neurons){ const age = t - n.lastFire; if (age >= 0 && age < 6) (n.inh ? onI : on)[Math.min(3, ((1 - age/6)*4)|0)].push(n); }
+  for (const [B, col] of [[on, "255,230,150"], [onI, "150,195,255"]]) for (let k=0;k<4;k++){
+    const L = B[k]; if (!L.length) continue;
+    ctx.fillStyle = `rgba(${col},${0.22 + k*0.24})`;
     ctx.beginPath();
     for (const n of L){ if (Q >= 3) ctx.rect(n.sx - n.r, n.sy - n.r, 2*n.r, 2*n.r); else { ctx.moveTo(n.sx + n.r, n.sy); ctx.arc(n.sx, n.sy, n.r, 0, TAU); } }
     ctx.fill();
@@ -1350,6 +1374,8 @@ function updateStats(){
     + (tooBusy() ? " · rete al limite del telefono" : "");
   if ($("help").textContent !== help) $("help").textContent = help;
   $("sP").textContent = net.prunes; $("sL").textContent = fmtLife(net.life);
+  let nI = 0; for (const n of net.neurons) if (n.inh) nI++;
+  $("sI").textContent = nI;
   const a = Math.round(novelty*100), b = Math.round(betrayal*100);
   $("novV").textContent = a + "%"; $("novB").style.width = a + "%";
   $("betV").textContent = b + "%"; $("betB").style.width = b + "%";
@@ -1370,7 +1396,7 @@ function headObj(){
 }
 function neuronRec(n){
   const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
-  return { id:n.id, p:n.p, f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
+  return { id:n.id, p:n.p, ...(n.inh ? { i:1 } : {}), f:Math.round(n.f*100)/100, th:r3(n.th), last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
            w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
 }
 // come erano disposti gli ingressi nelle versioni precedenti (V vista, F fovea, A bande, P altezza, S sagoma, T tatto)
@@ -1406,7 +1432,7 @@ function deserialize(text){
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
     // i neuroni salvati prima di questa versione non avevano la stabilità: li considera stabili ma senza utilità accumulata
-    n.neurons.push({ id:s.id, p:s.p, w, f:s.f, th:s.th||1, v:0, last:s.last|0, born: s.b ?? (d.life|0), occ: s.o ?? STABLE_AFTER, stable: s.st === undefined ? true : !!s.st, use: s.u ?? 0, kick:0, inTr:false, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
+    n.neurons.push({ id:s.id, p:s.p, inh: s.i === 1, w, f:s.f, th:s.th||1, v:0, last:s.last|0, born: s.b ?? (d.life|0), occ: s.o ?? STABLE_AFTER, stable: s.st === undefined ? true : !!s.st, use: s.u ?? 0, kick:0, inTr:false, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
       mw: Float32Array.from({length:N_MOT}, (_, k) => (ms && k < ms.length) ? ms[k]/255 : Math.random()*0.15),
       syn: Array.isArray(s.s) ? s.s.slice(0, MAX_SYN).map(([t,v]) => ({ t, w:v/255 })) : [],
       x:s.x||0, y:s.y||0, z: s.z ?? (Math.random()-0.5)*0.3, vx:0, vy:0, vz:0, flash:0, s:0 });
@@ -1474,7 +1500,7 @@ async function load(){
     $("wakeMsg").textContent = `Bentornato. Si ricorda tutto: ${net.neurons.length} neuroni, ${synCount()} sinapsi, ${fmtLife(net.life)} di vita.`;
   } else {
     reindex(); ensureVisible(); updateStats();
-    addMoment("nascita", "È nata: 4 neuroni e nessun ricordo"); await save();
+    addMoment("nascita", "È nata: 4 neuroni, uno inibitorio, e nessun ricordo"); await save();
   }
   if (!diary.length) diaryRecord();
 }
@@ -1494,7 +1520,7 @@ let accVo = 0, accSr = 0, accN = 0;          // voglia e "si riconosce": nel dia
 
 function snapRecord(){
   const N = net.neurons;
-  return { t: Date.now(), l: net.life, n: N.length, s: N.reduce((a, m) => a + (m.stable ? 1 : 0), 0), y: synCount(),
+  return { t: Date.now(), l: net.life, n: N.length, s: N.reduce((a, m) => a + (m.stable ? 1 : 0), 0), y: synCount(), ih: N.reduce((a, m) => a + (m.inh ? 1 : 0), 0),
            b: net.births, p: net.prunes, vb: net.babbles, vr: net.replies,
            vo: Math.round((accN ? accVo/accN : net.voice.voglia)*100), sr: Math.round((accN ? accSr/accN : selfSeen)*100) };
 }
@@ -1817,7 +1843,7 @@ $("reset").onclick = async () => {
   await makeCopy("sicurezza", "Prima di ricominciare");
   addMoment("sistema", "Ricominciata da capo");
   adopt(fresh()); diaryRecord();
-  addMoment("nascita", "È nata di nuovo: 4 neuroni e nessun ricordo");
+  addMoment("nascita", "È nata di nuovo: 4 neuroni, uno inibitorio, e nessun ricordo");
   await save();
 };
 
@@ -2227,7 +2253,8 @@ function renderHealth(){
   box("Il passo più lungo", h ? nf1(h.max) + " ms" : "–", "negli ultimi 20 secondi");
   box("Disegno", h ? nf1(h.drawPerSec) + " ms" : "–", h ? `ogni secondo · ${nf1(h.fps)} fotogrammi` : "");
   box("Neuroni accesi", h ? nf1(h.fired) : "–", h ? `per passo · ${Math.round(h.traced).toLocaleString("it-IT")} ricordano di essersi accesi` : "");
-  box("Neuroni", net.neurons.length.toLocaleString("it-IT"), `${synCount().toLocaleString("it-IT")} sinapsi`);
+  let nI = 0; for (const n of net.neurons) if (n.inh) nI++;
+  box("Neuroni", net.neurons.length.toLocaleString("it-IT"), `${nI.toLocaleString("it-IT")} inibitori · ${synCount().toLocaleString("it-IT")} sinapsi`);
   box("Fotocamera", camStream && video.videoWidth ? `${video.videoWidth} × ${video.videoHeight}` : "spenta", "la retina è 128 × 96");
   box("Grafica", { piena:"Piena", auto:"Automatica", leggera:"Leggera" }[gfxMode], gfxMode === "auto" && Q > 0 ? `semplificata, livello ${Q}` : Q > 0 ? `livello ${Q}` : "completa");
 }
