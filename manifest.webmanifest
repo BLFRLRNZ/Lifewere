@@ -1,7 +1,7 @@
 {
   "name": "Rete Viva",
   "short_name": "Rete Viva",
-  "description": "Una rete neurale che cresce: vede, sente, percepisce il tatto e impara mentre vive.",
+  "description": "Una rete neurale che cresce: vede, sente, parla e impara mentre vive.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
