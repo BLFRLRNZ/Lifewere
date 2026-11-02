@@ -1186,7 +1186,7 @@ function divide(parent){
 }
 function prune(){
   for (const n of net.neurons) n.use *= 0.9998;        // l'utilità passata si dimentica piano (circa un'ora e mezza)
-  // i giovani che non si sono integrati: mai più usati davvero per 2 minuti di vita
+  // i giovani che non si sono integrati: mai più usati davvero per 10 minuti di vita
   const failed = net.neurons.filter(n => !n.stable && net.life - n.last > YOUNG_PRUNE).sort((a,b) => a.last - b.last);
   for (const n of failed){ if (net.neurons.length <= MIN_NEURONS) break; removeNeuron(n); }
 }
