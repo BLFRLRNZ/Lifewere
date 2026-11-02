@@ -346,7 +346,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 24;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 25;                // la versione dell'app (la stessa della memoria del service worker)
 const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
 const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
@@ -627,8 +627,10 @@ function readHearing(){
 }
 // ogni senso pesa allo stesso modo: i 72 punti della vista non coprono i 16 delle bande dell'udito
 function balanceSenses(){
-  // la sagoma del suono (la vocale) pesa un po' di più dell'altezza: come i bambini, conta più cosa si dice che su che nota
-  for (const [a, b, on, len] of [[0, OFF_A, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 1], [OFF_S, N_IN, 0.05, 1.5]]){
+  // la sagoma del suono (la vocale) pesa molto più della nota: come per i bambini, conta cosa si dice, non su che nota.
+  // Così la stessa vocale detta da te intorno ai 100 Hz o da lei a 200 accende gli stessi neuroni (prima la nota pesava
+  // quanto la vocale, e una «a» su due note diverse era lontana quanto due vocali diverse sulla stessa nota)
+  for (const [a, b, on, len] of [[0, OFF_A, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 0.35], [OFF_S, N_IN, 0.05, 1.5]]){
     let s = 0; for (let i=a;i<b;i++) s += x[i]*x[i]; s = Math.sqrt(s);
     const k = s > on ? Math.min(len, s) / s : 0;   // attivo: lunghezza fino a 1 (1,5 per la sagoma); troppo debole: zero
     for (let i=a;i<b;i++) x[i] *= k;
@@ -666,8 +668,26 @@ const rnd4 = () => Math.random()+Math.random()+Math.random()+Math.random()-2;
 // quel punto per arrivare alla vocale: è soprattutto da questo movimento che l'orecchio capisce se è una b, una d o una g.
 const SUB = 5, SUB_DT = 1/(HZ*SUB);                     // il ritmo delle sillabe si calcola 5 volte per passo (ogni 10 ms)
 const aperS = new Float32Array(SUB).fill(1);              // apertura data dal ritmo in ogni parte del passo (1 aperta, 0 chiusa)
-const PLACE_CONS = [["b","m"], ["d","n"], ["g","ng"]];   // labbra, denti, palato: con il naso chiuso e con il naso aperto
+// le consonanti: dove si chiude la bocca (labbra, lingua in avanti, lingua indietro) e come passa l'aria.
+// Soffio debole: le corde vocali continuano a vibrare (b, d, g). Soffio forte: la glottide resta aperta e la consonante è sorda
+// (p, t, c dura come in «casa»). Soffio fortissimo con la lingua in avanti: la lingua si stacca piano e l'aria passa fischiando
+// contro il palato, come nella c dolce di «ciao». Naso aperto: m, n, ng
+const CONS = [
+  { voiced:"b", voiceless:"p", affricate:"p", nasal:"m" },
+  { voiced:"d", voiceless:"t", affricate:"c dolce", nasal:"n" },
+  { voiced:"g", voiceless:"c", affricate:"c", nasal:"ng" },
+];
 const NOTCH_F = [1000, 1800, 3200];                       // dove il naso "toglie" suono, secondo il punto in cui la bocca è chiusa
+const VOT = [0.02, 0.025, 0.035];                         // sorde: quanto tarda la voce dopo la riapertura (s)
+const FR_GAIN = 2.2;                                        // forza del fischio della c dolce: un po' sotto la vocale, come nelle voci vere
+function consKind(a){ return a.V > 0.5 ? "nasal" : a.B > 0.8 ? "affricate" : a.B > 0.5 ? "voiceless" : "voiced"; }
+// come si scrive in italiano la sillaba: «cia» e «ce», «ca» e «che», «ga» e «ghe»
+function spell(place, kind, v){
+  const front = v === "e" || v === "i";
+  if (place === 0) return CONS[0][kind] + v;
+  if (place === 1) return kind === "affricate" ? (front ? "c" : "ci") + v : CONS[1][kind] + v;
+  return (kind === "nasal" ? "ng" : kind === "voiced" ? "g" : "c") + (front ? "h" : "") + v;
+}
 const BW_F = [80, 100, 150, 200, 300];                     // larghezza di ogni risonanza, in Hz (come nelle voci vere)
 const OUT_GAIN = 0.62;                                     // così anche la vocale più forte resta sotto il massimo
 // le formanti della vocale: la mascella apre (F1 sale), la lingua in avanti alza F2, le labbra arrotondate abbassano tutto
@@ -675,10 +695,10 @@ function vowelOf(J, T, L){
   const Lr = Math.min(1, L/0.7);
   return [(250 + 600*J)*(1 - 0.15*Lr), Math.max(600, 700 + 1700*T - 450*Lr), 2300 + 600*T - 150*Lr];
 }
-// dove si chiude la bocca quando il ritmo la chiude: labbra protese → labbra; lingua avanti → denti; lingua indietro → palato
+// dove si chiude la bocca quando il ritmo la chiude: labbra protese → labbra; lingua avanti → denti e palato; lingua indietro → velo
 function placeOf(L, T){ return L > 0.55 ? 0 : T > 0.55 ? 1 : 2; }
 // dove vanno le formanti quando la bocca è chiusa in quel punto (il "locus", come misurato sulle voci vere):
-// labbra → F2 e F3 in basso; denti → F2 verso 1700-2000 Hz, F3 in alto; palato → F2 e F3 vicine (si "pizzicano")
+// labbra → F2 e F3 in basso; lingua avanti → F2 verso 1700-2000 Hz, F3 in alto; lingua indietro → F2 e F3 vicine (si "pizzicano")
 function locusOf(place, F2, F3){
   if (place === 0) return [200, 0.7*F2 + 50, F3 - 350];
   if (place === 1) return [200, 0.35*F2 + 1250, Math.max(F3, 2800)];
@@ -707,7 +727,7 @@ function glottalCoefs(K = 96){
   return { re, im };
 }
 function buildVoice(ac, dest){
-  const V = { last:{}, closed:false, place:0, on:false };
+  const V = { last:{}, closed:false, place:0, kind:"voiced", on:false, mute:false, voiceAt:0, aspUntil:0 };
   const gw = glottalCoefs();
   V.osc = ac.createOscillator(); V.osc.setPeriodicWave(ac.createPeriodicWave(gw.re, gw.im)); V.osc.frequency.value = 150;
   // il tremolio naturale dell'altezza: tre oscillazioni lente sommate, pochi centesimi di semitono (come nelle voci vere)
@@ -733,8 +753,12 @@ function buildVoice(ac, dest){
   // lo scoppio d'aria quando una chiusura si riapre
   V.bp = ac.createBiquadFilter(); V.bp.type = "bandpass"; V.bp.frequency.value = 2000; V.bp.Q.value = 1;
   V.burst = ac.createGain(); V.burst.gain.value = 0; V.noise.connect(V.bp); V.bp.connect(V.burst);
+  // il fischio della c dolce: l'aria che passa stretta tra lingua e palato, soprattutto tra 2,5 e 5 kHz
+  V.frHP = ac.createBiquadFilter(); V.frHP.type = "highpass"; V.frHP.frequency.value = 2200; V.frHP.Q.value = 0;
+  V.frBP = ac.createBiquadFilter(); V.frBP.type = "bandpass"; V.frBP.frequency.value = 3400; V.frBP.Q.value = 1.2;
+  V.fr = ac.createGain(); V.fr.gain.value = 0; V.noise.connect(V.frHP); V.frHP.connect(V.frBP); V.frBP.connect(V.fr);
   V.out = ac.createGain(); V.out.gain.value = OUT_GAIN;
-  for (const g of [V.oral, V.nas, V.bar, V.burst]) g.connect(V.out);
+  for (const g of [V.oral, V.nas, V.bar, V.burst, V.fr]) g.connect(V.out);
   V.out.connect(dest);
   V.osc.start(); V.noise.start(); V.lfo.forEach(o => o.start());
   return V;
@@ -748,9 +772,8 @@ function playBody(V, t0, f0, amp, a, aper, glide){
     p.setTargetAtTime(v, t, tau); V.last[key] = v;
   };
   if (f0 > 0) V.osc.frequency.setTargetAtTime(f0, t0, glide);
-  set(V.src.gain, "src", amp, t0, 0.04);
-  set(V.asp.gain, "asp", amp*(0.012 + 0.2*a.B), t0, 0.04);
-  if (!amp && !V.on) return;                             // in silenzio la bocca si muove, ma non suona
+  const kind = consKind(a), breathy = amp*(0.012 + 0.1*a.B);     // il soffio rende un po' soffiata anche la vocale
+  if (!amp && !V.on){ set(V.src.gain, "src", 0, t0, 0.04); set(V.asp.gain, "asp", 0, t0, 0.04); return; }   // in silenzio la bocca si muove, ma non suona
   V.on = amp > 0;
   set(V.nas.gain, "nas", 0.5*a.V, t0, 0.03);
   for (let s=0;s<SUB;s++){
@@ -759,18 +782,35 @@ function playBody(V, t0, f0, amp, a, aper, glide){
     const Fk = [k.F1, k.F2, k.F3], tf = [0.012, 0.016, 0.022][V.place];
     for (let i=0;i<3;i++){ set(V.F[i].frequency, "F" + i, Fk[i], t, tf, 0.004); set(V.F[i].Q, "Q" + i, 20*Math.log10(Fk[i]/BW_F[i]), t, tf, 0.004); }
     set(V.oral.gain, "oral", k.oral, t, 0.005, 0.01);
-    set(V.bar.gain, "bar", 0.1*k.C*k.C*(1 - a.V), t, 0.01, 0.01);
     if (!V.closed && k.C > 0.85){                        // la bocca si chiude: il naso prende il suono del punto di chiusura
-      V.closed = true; V.place = k.place; set(V.notch.frequency, "notch", NOTCH_F[k.place], t, 0.005);
+      V.closed = true; V.place = k.place; V.kind = kind; set(V.notch.frequency, "notch", NOTCH_F[k.place], t, 0.005);
     } else if (V.closed && k.C < 0.6){                   // si riapre: l'aria trattenuta scoppia (non se esce dal naso)
       V.closed = false;
-      const pk = amp*[0.25, 0.6, 0.6][V.place]*(1 - a.V);
-      if (pk > 1e-3){
-        const f = [900, 4000, 1.1*k.F2][V.place], q = [0.7, 1.2, 3][V.place];
-        V.bp.frequency.setValueAtTime(f, t); V.bp.Q.setValueAtTime(q, t);
+      const vl = V.kind === "voiceless" || V.kind === "affricate";
+      if (V.kind === "affricate" && V.place === 1){
+        // c dolce: la lingua si stacca piano dal palato e l'aria passa fischiando per 70 ms prima che riparta la voce
+        const pk = amp*FR_GAIN;
+        V.fr.gain.setValueAtTime(pk, t); V.fr.gain.setTargetAtTime(pk*0.8, t + 0.004, 0.05); V.fr.gain.setTargetAtTime(0, t + 0.07, 0.012);
+        V.voiceAt = t + 0.075;
+      } else if (V.kind !== "nasal"){
+        // labbra, lingua avanti, lingua indietro: un colpo d'aria, più forte nelle sorde (p, t, c dura)
+        const pk = amp*[0.25, 0.6, 0.6][V.place]*(vl ? 1.6 : 1);
+        V.bp.frequency.setValueAtTime([900, 4000, 1.1*k.F2][V.place], t); V.bp.Q.setValueAtTime([0.7, 1.2, 3][V.place], t);
         V.burst.gain.setValueAtTime(pk, t); V.burst.gain.setTargetAtTime(0, t + 0.003, [0.004, 0.006, 0.012][V.place]);
+        if (vl){
+          // nelle sorde la voce riparte un attimo dopo; intanto passa l'aria (l'aspirazione), di più se il soffio è fortissimo
+          const vot = VOT[V.place]*(V.kind === "affricate" ? 1.6 : 1);
+          V.voiceAt = t + vot;
+          V.asp.gain.setValueAtTime(amp*(V.kind === "affricate" ? 0.45 : 0.3), t); V.asp.gain.setTargetAtTime(breathy, V.voiceAt, 0.01); V.last.asp = breathy; V.aspUntil = V.voiceAt;
+        }
       }
     }
+    // le corde vocali tacciono durante la chiusura di una sorda e per un attimo dopo la riapertura
+    const mute = (V.closed && (V.kind === "voiceless" || V.kind === "affricate")) || t < V.voiceAt;
+    set(V.src.gain, "src", mute ? 0 : amp, t, mute ? 0.004 : V.mute ? 0.008 : 0.04);
+    V.mute = mute;
+    set(V.bar.gain, "bar", mute ? 0 : 0.1*k.C*k.C*(1 - a.V), t, 0.01, 0.01);
+    if (t >= V.aspUntil) set(V.asp.gain, "asp", breathy, t, 0.01);
   }
 }
 // il ritmo delle sillabe in questo passo (vedi voiceStep): riempie aperS, l'apertura della bocca ogni 10 ms
@@ -788,8 +828,8 @@ function rhythmStep(on){
 function ensureVoice(){ if (audioCtx && !M) M = buildVoice(audioCtx, master); }
 function hushVoice(){
   if (!M) return; const t = audioCtx.currentTime;
-  for (const [p, key] of [[M.src.gain, "src"], [M.asp.gain, "asp"], [M.burst.gain, "burst"]]){ p.cancelScheduledValues(t); p.setTargetAtTime(0, t, 0.02); M.last[key] = 0; }
-  M.on = false; M.closed = false;
+  for (const [p, key] of [[M.src.gain, "src"], [M.asp.gain, "asp"], [M.burst.gain, "burst"], [M.fr.gain, "fr"]]){ p.cancelScheduledValues(t); p.setTargetAtTime(0, t, 0.02); M.last[key] = 0; }
+  M.on = false; M.closed = false; M.voiceAt = 0; M.aspUntil = 0; M.mute = false;
 }
 
 // ---- riconoscere la propria voce, imparando ----
@@ -818,11 +858,13 @@ function closeEpisode(){
 
 function voiceStep(firedNow){
   const V = net.voice;
-  // la rete spinge i neuroni motori che conosce: corde vocali, muscoli della bocca e ritmo delle sillabe
+  // la rete spinge i neuroni motori che conosce: corde vocali, muscoli della bocca e ritmo delle sillabe.
+  // Spingono i neuroni accesi da poco, ognuno quanto è ancora viva la sua traccia (mezzo secondo circa): come la memoria
+  // dell'orecchio, il suono appena sentito resta un attimo e guida la bocca anche tra un'accensione e l'altra
   mIn.fill(0); rawM.fill(0);
-  for (const n of firedNow){
+  for (const n of traced){
     if (n.inh) continue;                                  // i gesti della voce li comandano gli eccitatori
-    for (let k=0;k<N_MOT;k++) rawM[k] += n.mw[k];
+    const g = n.tr; for (let k=0;k<N_MOT;k++) rawM[k] += g*n.mw[k];
   }
   // come ogni neurone, i neuroni motori si abituano in pochi secondi a una spinta che resta sempre uguale:
   // conta ciò che cambia (per esempio un suono nuovo da rifare), non il brusio di fondo della rete
@@ -902,10 +944,10 @@ function speechNow(){
   const o = vowelOf(art.J, art.T, art.L);
   let v = "a", bd = 1e9;
   for (const [s, f1, f2] of VOW){ const d = Math.pow(Math.log2(o[0]/f1), 2) + Math.pow(Math.log2(o[1]/f2), 2); if (d < bd){ bd = d; v = s; } }
-  const nas = art.V > 0.5, c = PLACE_CONS[placeOf(art.L, art.T)][nas ? 1 : 0];
+  const kind = consKind(art), place = placeOf(art.L, art.T), syl = spell(place, kind, v);
   const shut = !rhythmOn && !!mouthNow && mouthNow.C > 0.85;
-  const text = shut ? (nas ? "mm" : "…") : rhythmOn ? `${c}${v}-${c}${v}` : v;
-  return { v, c: rhythmOn ? c : "", shut, text };
+  const text = shut ? (kind === "nasal" ? "mm" : "…") : rhythmOn ? `${syl}-${syl}` : v;
+  return { v, c: rhythmOn ? CONS[place][kind] : "", shut, text };
 }
 function sayingNow(){ return mouthNow ? speechNow().text : ""; }
 
@@ -1721,7 +1763,7 @@ function startDiaryFor(n){
   const done = n.babbles + n.replies > 50, F = n.firsts = {};
   if (n.babbles > 0) F.babble = 1;
   if (n.replies > 0){ F.reply = 1; F.sound = 1; }
-  if (done){ F.syl = 1; F.vow = { a:1, e:1, i:1, o:1, u:1 }; F.cons = { b:1, d:1, g:1, m:1, n:1, ng:1 }; F.allv = 1; F.self = 1; }
+  if (done){ F.syl = 1; F.vow = { a:1, e:1, i:1, o:1, u:1 }; F.cons = { b:1, d:1, g:1, m:1, n:1, ng:1, p:1, t:1, c:1, "c dolce":1 }; F.allv = 1; F.self = 1; }
   F.nmax = MILE_N.filter(m => n.neurons.length >= m).pop() || 0;
   F.lmax = MILE_H.filter(h => n.life/HZ/3600 >= h).pop() || 0;
   F.sight = 1;
