@@ -346,7 +346,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 25;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 26;                // la versione dell'app (la stessa della memoria del service worker)
 const IN_V = 48, IN_A = 16, IN_P = 24, IN_S = 12;  // vista, bande dell'udito, altezza, sagoma del suono
 const OFF_A = IN_V, OFF_P = OFF_A + IN_A, OFF_S = OFF_P + IN_P, N_IN = OFF_S + IN_S;   // 100 ingressi sensoriali
 // l'orecchio sente l'altezza da 80 a 1500 Hz: comprende anche le voci adulte più basse
@@ -371,9 +371,17 @@ const EXPECT_WINDOW = 14;         // passi (0,7 s) per vedere se un annuncio si 
 // Se si accende molto di più la sua soglia di base sale piano, in qualche minuto; se non si accende mai scende,
 // finché non trova qualcosa che è suo. Nessuno vince sempre, nessuno mai
 const RATE_TARGET = 1/(10*HZ), RATE_KEEP = 1 - 1/(HZ*300), BASE_ETA = 0.006, BASE_MIN = 0.5, BASE_MAX = 3;
-// competizione: di ciò che sta arrivando imparano solo i 3 neuroni che lo rappresentano meglio tra quelli che si accendono
-const LEARN_RATES = [0.08, 0.02, 0.01], LEARN_MIN_S = 0.4;
-// doppioni: due neuroni che reagiscono quasi esattamente alla stessa cosa (oltre il 99%) si fondono in uno
+// competizione: di ciò che sta arrivando imparano solo i 3 neuroni che lo rappresentano meglio tra quelli che si accendono.
+// Una soglia sola, il 70%: se ciò che arriva somiglia almeno al 70% a un neurone, quel neurone lo affina; se non somiglia
+// così a nessuno è una cosa nuova, e nasce un neurone nuovo per impararla. Un neurone che sa già una cosa non viene
+// trascinato verso un'altra che gli somiglia appena (prima si imparava già dal 40% e si nasceva sotto il 60%)
+const LEARN_RATES = [0.08, 0.02, 0.01], VIGILANCE = 0.7;
+// consolidamento: più un neurone ha imparato, più piano cambia. Ogni volta che impara da primo è una lezione (da secondo
+// o da terzo vale meno): dopo 20 lezioni impara a metà velocità, da 180 in su a un decimo. Ciò che sa si fissa,
+// le cose nuove le prendono i neuroni nuovi
+const CONSOLIDATE_K = 20, CONSOLIDATE_MIN = 0.1;
+// doppioni: due neuroni eccitatori che reagiscono quasi esattamente alla stessa cosa (oltre il 99%) si fondono in uno.
+// Gli inibitori no: sono freni, non ricordi, e due freni simili non sono un doppione
 const MERGE_SIM = 0.99;
 // impulsi in viaggio e annunci: nessun tetto nell'uso normale, solo un limite altissimo contro i blocchi del telefono
 const MAX_FLIGHTS = 20000, MAX_PENDING = 30000;
@@ -403,7 +411,7 @@ let byId = new Map();
 function reindex(){ byId = new Map(net.neurons.map(n => [n.id, n])); }
 
 function fresh(){
-  const n = { life:0, births:0, prunes:0, babbles:0, replies:0, nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
+  const n = { life:0, births:0, prunes:0, merges:0, babbles:0, replies:0, nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
   const tones = [220, 277.18, 329.63, 415.3];
   for (let i = 0; i < MIN_NEURONS; i++){
     const a = i / MIN_NEURONS * Math.PI * 2;
@@ -413,7 +421,7 @@ function fresh(){
   return n;
 }
 function makeNeuron(n, w, f, parent, x, y, z){
-  return { id:n.nextId++, p:parent, inh:false, w, f, th:1, base:1, rate:RATE_TARGET, inhAt:-99, v:0, last:n.life, born:n.life, occ:0, stable:false, use:0, kick:0, inTr:false, lastFire:-99, fires:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
+  return { id:n.nextId++, p:parent, inh:false, w, f, th:1, base:1, rate:RATE_TARGET, inhAt:-99, v:0, last:n.life, born:n.life, occ:0, stable:false, use:0, kick:0, inTr:false, lastFire:-99, fires:0, lk:0, syn:[], pred:0, tr:0, mw:Float32Array.from({length:N_MOT}, () => Math.random()*0.15),
            x, y, z, vx:0, vy:0, vz:0, flash:0, s:0 };
 }
 // un neurone nuovo di zecca ascolta pochi ingressi a caso, non tutti: altrimenti risponderebbe un po' a ogni cosa
@@ -1100,10 +1108,10 @@ function stepInner(){
     n.base = Math.max(BASE_MIN, Math.min(BASE_MAX, n.base + BASE_ETA*(n.rate - (n.inh ? 3*RATE_TARGET : RATE_TARGET))));
     if (n.v > n.th) firedNow.push(n);
   }
-  // competizione: i 3 neuroni accesi che somigliano di più a ciò che sta arrivando (se gli somigliano davvero)
+  // competizione: i 3 neuroni accesi che somigliano di più a ciò che sta arrivando (se gli somigliano almeno al 70%)
   let w0 = null, w1 = null, w2 = null;
   if (awake) for (const n of firedNow){
-    if (n.s < LEARN_MIN_S) continue;
+    if (n.s < VIGILANCE) continue;
     if (!w0 || n.s > w0.s){ w2 = w1; w1 = w0; w0 = n; } else if (!w1 || n.s > w1.s){ w2 = w1; w1 = n; } else if (!w2 || n.s > w2.s) w2 = n;
   }
 
@@ -1112,9 +1120,15 @@ function stepInner(){
     const real = (n.v - n.kick) > 0.5*n.th;       // scarica per qualcosa di vero (sensi o sinapsi), non solo per un sogno
     n.v = 0; n.th += n.inh ? 0.05 : 0.15; n.fires++; n.rate += 1 - RATE_KEEP; n.lastFire = net.life; n.flash = 1;   // gli inibitori si stancano poco
     if (real) useNeuron(n);
-    // impara ciò che sta arrivando solo se è tra i 3 che lo rappresentano meglio: gli altri restano liberi per altro
+    // impara ciò che sta arrivando solo se è tra i 3 che lo rappresentano meglio: gli altri restano liberi per altro.
+    // Più ha già imparato, più piano cambia (consolidamento)
     const lr = n === w0 ? LEARN_RATES[0] : n === w1 ? LEARN_RATES[1] : n === w2 ? LEARN_RATES[2] : 0;
-    if (lr){ for (let i=0;i<N_IN;i++) n.w[i] += lr*(xn[i]-n.w[i]); normalize(n.w); }
+    if (lr){
+      const r = lr*Math.max(CONSOLIDATE_MIN, CONSOLIDATE_K/(CONSOLIDATE_K + n.lk));
+      n.lk += lr/LEARN_RATES[0];
+      for (let i=0;i<N_IN;i++) n.w[i] += r*(xn[i]-n.w[i]);
+      normalize(n.w);
+    }
     // STDP: chi ha scaricato poco prima di me (traccia ancora viva) rafforza la sinapsi verso di me.
     // Se era un inibitorio, cresce la sua inibizione verso di me (si accendeva insieme a me: è a me che deve frenare)
     for (const m of traced){
@@ -1155,10 +1169,10 @@ function stepInner(){
   else betrayal *= 0.97;
   surprise = Math.max(novelty, awake ? betrayal : 0);   // sorprende sia il mai visto, sia l'atteso che non arriva
 
-  // crescita: quando arriva qualcosa che nessun neurone rappresenta bene (novità), il più vicino si divide e il figlio
-  // impara proprio quella cosa. La novità si accumula: un evento breve ma molto nuovo basta, una novità debole deve durare di più.
-  // Le attese tradite non fanno nascere neuroni: correggono le sinapsi che avevano previsto male
-  highSurprise = highSurprise*0.97 + (awake ? Math.max(0, novNow - 0.4) : 0);
+  // crescita: quando arriva qualcosa che nessun neurone rappresenta almeno al 70% (la stessa soglia dell'apprendimento),
+  // il più vicino si divide e il figlio impara proprio quella cosa. La novità si accumula: un evento breve ma molto nuovo basta,
+  // una novità debole deve durare di più. Le attese tradite non fanno nascere neuroni: correggono le sinapsi che avevano previsto male
+  highSurprise = highSurprise*0.97 + (awake ? Math.max(0, novNow - (1 - VIGILANCE)) : 0);
   if (highSurprise > 1.5 && best && net.life - lastBirth > 20){ divide(best); highSurprise = 0; lastBirth = net.life; }
 
   if (net.life % HZ === 0){ decaySynapses(); prune(); mergeTwins(); }
@@ -1239,15 +1253,16 @@ function removeNeuron(n){
   rings.push({ x:n.x, y:n.y, z:n.z, t:0, kind:"prune" });
 }
 // doppioni: due neuroni che reagiscono quasi esattamente alla stessa cosa fanno lo stesso lavoro due volte.
-// Ogni secondo se ne guardano due a caso; se uno ha un gemello quasi identico (dello stesso tipo, oltre il 99%) si fondono:
+// Ogni secondo se ne guardano due a caso; se uno ha un gemello quasi identico (oltre il 99%) si fondono:
 // resta il più usato, che prende le sinapsi dell'altro, e chi parlava al doppione ora parla a lui.
-// Al massimo uno al secondo: si vede come una potatura lenta
+// Al massimo uno al secondo: si vede come una potatura lenta. Solo gli eccitatori, che rappresentano le esperienze:
+// gli inibitori si accendono più spesso, finiscono per somigliarsi, ma ognuno frena i suoi neuroni
 function mergeTwins(){
   const N = net.neurons;
   for (let tries = 0; tries < 2 && N.length > MIN_NEURONS; tries++){
-    const a = N[(Math.random()*N.length)|0]; if (net.life - a.born < NEWBORN_GRACE) continue;
+    const a = N[(Math.random()*N.length)|0]; if (a.inh || net.life - a.born < NEWBORN_GRACE) continue;
     let b = null, bs = MERGE_SIM;
-    for (const m of N){ if (m === a || m.inh !== a.inh || net.life - m.born < NEWBORN_GRACE) continue; const q = dot(a.w, m.w); if (q > bs){ bs = q; b = m; } }
+    for (const m of N){ if (m === a || m.inh || net.life - m.born < NEWBORN_GRACE) continue; const q = dot(a.w, m.w); if (q > bs){ bs = q; b = m; } }
     if (!b) continue;
     const keep = a.use >= b.use ? a : b, drop = keep === a ? b : a;
     for (const q of drop.syn){
@@ -1263,7 +1278,7 @@ function mergeTwins(){
     }
     const tu = keep.use + drop.use || 1;
     for (let k=0;k<N_MOT;k++) keep.mw[k] = (keep.mw[k]*keep.use + drop.mw[k]*drop.use)/tu || keep.mw[k];
-    keep.use += drop.use; keep.fires += drop.fires; keep.occ = Math.max(keep.occ, drop.occ);
+    keep.use += drop.use; keep.fires += drop.fires; keep.lk += drop.lk; keep.occ = Math.max(keep.occ, drop.occ);
     if (drop.stable) keep.stable = true;
     removeNeuron(drop); net.merges = (net.merges || 0) + 1;
     return;
@@ -1602,13 +1617,13 @@ const unpackF = s => { const u = unb64(s); return u.length === N_MOT*N_AUD ? Flo
 function serialize(){ return JSON.stringify(serializeObj()); }
 function serializeObj(){ return { ...headObj(), neurons: net.neurons.map(neuronRec) }; }
 function headObj(){
-  return { v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, babbles:net.babbles, replies:net.replies, nextId:net.nextId,
+  return { v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, merges:net.merges || 0, babbles:net.babbles, replies:net.replies, nextId:net.nextId,
     firsts: net.firsts, bornAt: net.bornAt,
     voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2) } };
 }
 function neuronRec(n){
   const q = new Int8Array(N_IN); for (let i=0;i<N_IN;i++) q[i] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
-  return { id:n.id, p:n.p, ...(n.inh ? { i:1 } : {}), f:Math.round(n.f*100)/100, th:r3(n.th), tb:r3(n.base), r:Math.round(n.rate*1e5)/1e5, last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, x:r3(n.x), y:r3(n.y), z:r3(n.z),
+  return { id:n.id, p:n.p, ...(n.inh ? { i:1 } : {}), f:Math.round(n.f*100)/100, th:r3(n.th), tb:r3(n.base), r:Math.round(n.rate*1e5)/1e5, last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, k:Math.round(n.lk*10)/10, x:r3(n.x), y:r3(n.y), z:r3(n.z),
            w:b64(new Uint8Array(q.buffer)), m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
 }
 // come erano disposti gli ingressi nelle versioni precedenti (V vista, F fovea, A bande, P altezza, S sagoma, T tatto)
@@ -1624,7 +1639,7 @@ const NEW_OFF = { V:0, A:OFF_A, P:OFF_P, S:OFF_S };   // la fovea e il tatto non
 function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
-  const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, babbles:d.babbles|0, replies:d.replies|0, nextId:d.nextId|0, neurons:[], voice:newVoiceMind(),
+  const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, merges:d.merges|0, babbles:d.babbles|0, replies:d.replies|0, nextId:d.nextId|0, neurons:[], voice:newVoiceMind(),
               firsts: (d.firsts && typeof d.firsts === "object") ? d.firsts : null, bornAt: +d.bornAt || null };
   if (d.voice && d.voice.F1){
     const V = n.voice; V.voglia = +d.voice.voglia || 0.5; V.prog = +d.voice.prog || 0;
@@ -1640,11 +1655,15 @@ function deserialize(text){
     else throw new Error("file non valido");
     // un neurone che guardava solo la fovea resta senza ingressi: ricomincia ad ascoltare qualcosa a caso
     let e = 0; for (let i=0;i<N_IN;i++) e += w[i]*w[i];
-    if (e < 1e-6) w.set(randUnit());
+    const blank = e < 1e-6;
+    if (blank) w.set(randUnit());
     normalize(w);
     const ms = s.m ? unb64(s.m) : null;
-    // i neuroni salvati prima di questa versione non avevano la stabilità: li considera stabili ma senza utilità accumulata
-    n.neurons.push({ id:s.id, p:s.p, inh: s.i === 1, w, f:s.f, th:s.th||1, base: s.tb ?? 1, rate: s.r ?? (s.i === 1 ? 3*RATE_TARGET : RATE_TARGET), inhAt:-99, v:0, last:s.last|0, born: s.b ?? (d.life|0), occ: s.o ?? STABLE_AFTER, stable: s.st === undefined ? true : !!s.st, use: s.u ?? 0, kick:0, inTr:false, lastFire:-99, fires:s.fires|0, pred:0, tr:0,
+    // i neuroni salvati prima di questa versione non avevano la stabilità: li considera stabili ma senza utilità accumulata.
+    // Prima della versione 26 non c'era il consolidamento: i neuroni contano come esperti in base a quanto hanno lavorato,
+    // ogni volta che si sono accesi vale una lezione (chi ricomincia da ingressi a caso ricomincia da zero)
+    n.neurons.push({ id:s.id, p:s.p, inh: s.i === 1, w, f:s.f, th:s.th||1, base: s.tb ?? 1, rate: s.r ?? (s.i === 1 ? 3*RATE_TARGET : RATE_TARGET), inhAt:-99, v:0, last:s.last|0, born: s.b ?? (d.life|0), occ: s.o ?? STABLE_AFTER, stable: s.st === undefined ? true : !!s.st, use: s.u ?? 0, kick:0, inTr:false, lastFire:-99, fires:s.fires|0,
+      lk: blank ? 0 : Math.max(0, +(s.k ?? s.fires) || 0), pred:0, tr:0,
       mw: Float32Array.from({length:N_MOT}, (_, k) => (ms && k < ms.length) ? ms[k]/255 : Math.random()*0.15),
       syn: Array.isArray(s.s) ? s.s.slice(0, MAX_SYN).map(([t,v]) => ({ t, w:v/255 })) : [],
       x:s.x||0, y:s.y||0, z: s.z ?? (Math.random()-0.5)*0.3, vx:0, vy:0, vz:0, flash:0, s:0 });
@@ -1733,7 +1752,7 @@ let accVo = 0, accSr = 0, accN = 0;          // voglia e "si riconosce": nel dia
 function snapRecord(){
   const N = net.neurons;
   return { t: Date.now(), l: net.life, n: N.length, s: N.reduce((a, m) => a + (m.stable ? 1 : 0), 0), y: synCount(), ih: N.reduce((a, m) => a + (m.inh ? 1 : 0), 0),
-           b: net.births, p: net.prunes, vb: net.babbles, vr: net.replies,
+           b: net.births, p: net.prunes, fu: net.merges || 0, vb: net.babbles, vr: net.replies,
            vo: Math.round((accN ? accVo/accN : net.voice.voglia)*100), sr: Math.round((accN ? accSr/accN : selfSeen)*100) };
 }
 function diaryRecord(){
