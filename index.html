@@ -34,6 +34,8 @@ h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.02em}
 .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
 #ears{display:flex;gap:2px;height:20px;align-items:flex-end;margin-top:2px}
 #ears i{flex:1;background:var(--good);min-height:1px;border-radius:1px}
+#wordNow{transition:opacity .6s}
+#wordNow.dim{color:var(--dim);font-weight:400}
 #mouth{display:flex;gap:1px;height:16px;align-items:flex-end;margin-top:2px}
 #mouth i{flex:1;background:#ff7ac8;min-height:1px;border-radius:1px;opacity:.55}
 #mouth i.on{opacity:1}
@@ -213,7 +215,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
     </div>
     <div class="meter"><div class="row">novità<b id="novV">0%</b></div><div class="bar"><i id="novB"></i></div></div>
     <div class="meter"><div class="row">attesa tradita<b id="betV">0%</b></div><div class="bar"><i id="betB" style="background:#6e96ff"></i></div></div>
-    <div class="meter"><div class="row">udito<b id="earTxt">–</b></div><div id="ears"></div></div>
+    <div class="meter"><div class="row">udito<b id="earTxt">–</b></div><div id="ears"></div><div class="row">parola<b id="wordNow">–</b></div></div>
     <div class="meter"><div class="row">voce<b id="voiceKind">in silenzio</b></div><div class="row"><span id="voiceSay"></span><span id="voiceHz"></span></div><div id="mouth"></div></div>
     <div class="meter"><div class="row">si riconosce<b id="selfV">0%</b></div><div class="bar"><i id="selfB" style="background:#c89bff"></i></div></div>
     <div class="meter"><div class="row">si sente<b id="loudV">–</b></div><div class="bar"><i id="loudB" style="background:#9fe6a0"></i></div><div class="note" id="echoNote" hidden>il telefono sta togliendo l'eco: si sente poco</div></div>
@@ -347,7 +349,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 27;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 28;                // la versione dell'app (la stessa della memoria del service worker)
 // vista, bande dell'udito, altezza, sagoma del suono, attacchi.
 // Gli attacchi sono come le cellule d'attacco dell'orecchio: si accendono quando in una banda il suono cresce di colpo
 // (lo scoppio di una «p», il fruscio di una «c», una vocale che comincia) e tacciono finché un suono resta uguale.
@@ -426,7 +428,7 @@ let byId = new Map();
 function reindex(){ byId = new Map(net.neurons.map(n => [n.id, n])); }
 
 function fresh(){
-  const n = { life:0, births:0, prunes:0, merges:0, babbles:0, replies:0, wordsNew:0, wordsKnown:0, nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
+  const n = { life:0, births:0, prunes:0, merges:0, babbles:0, replies:0, wordsNew:0, wordsKnown:0, wordNum:0, imitations:0, imitGood:0, wordLog:[], nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
   const tones = [220, 277.18, 329.63, 415.3];
   // due neuroni per la vista e due per l'udito; uno della vista è inibitorio. Le parole nascono quando le sente
   const areas = [A_VISTA, A_VISTA, A_UDITO, A_UDITO];
@@ -888,7 +890,32 @@ const e1 = new Float32Array(N_MOT), e2 = new Float32Array(N_MOT), P1 = new Float
 const F1s = new Float32Array(N_MOT*N_AUD), F2s = new Float32Array(N_MOT*N_AUD);   // il modello com'era all'inizio del verso
 const aud = new Float32Array(N_AUD);         // ciò che sente davvero: altezza e sagoma
 const rHist = [];
-function newVoiceMind(){ return { F1:new Float32Array(N_MOT*N_AUD), F2:new Float32Array(N_MOT*N_AUD), G1:new Float32Array(N_MOT*N_AUD), G2:new Float32Array(N_MOT*N_AUD), voglia:0.5, prog:0 }; }
+function newVoiceMind(){ return { F1:new Float32Array(N_MOT*N_AUD), F2:new Float32Array(N_MOT*N_AUD), G1:new Float32Array(N_MOT*N_AUD), G2:new Float32Array(N_MOT*N_AUD), H:new Float32Array(N_MOT*IN_U1), hn:0, voglia:0.5, prog:0 }; }
+// ---- il modello inverso: da ciò che sente a come muovere la voce ----
+// Come i bambini nei mesi delle lallazioni, impara sentendosi: in ogni istante in cui riconosce la propria voce collega
+// ciò che l'orecchio sente (altezza, sagoma, bande e attacchi) al gesto che l'ha appena prodotto (corde vocali, bocca, ritmo).
+// Così, quando sente un suono da fuori, sa già con quale gesto lo rifarebbe, istante per istante: è ciò che usa per ripetere
+// una parola. Nel cervello sono le vie che portano dall'udito alla bocca. (Prima i gesti stavano solo nei neuroni dell'udito,
+// uno per neurone: un neurone che sente tanti suoni diversi ne faceva la media, e il gesto veniva vago)
+function learnInverse(selfness){
+  const V = net.voice, mx = maxOf(e1); if (mx < 0.05) return;
+  let n2 = 0.05; for (let i=0;i<IN_U1;i++){ const a = x[OFF_A + i]; n2 += a*a; }
+  if (n2 < 0.3) return;
+  const r = 0.05*selfness/n2;
+  for (let m=0;m<N_MOT;m++){
+    const row = m*IN_U1; let y = 0;
+    for (let i=0;i<IN_U1;i++) y += V.H[row + i]*x[OFF_A + i];
+    const err = e1[m]/mx - y;
+    for (let i=0;i<IN_U1;i++) V.H[row + i] = Math.max(-4, Math.min(4, V.H[row + i] + r*err*x[OFF_A + i]));
+  }
+  V.hn++;
+}
+// il gesto che rifarebbe un istante sentito (una copia di ciò che arrivava all'orecchio)
+function inverseOf(fr){
+  const V = net.voice, g = new Float32Array(N_MOT);
+  for (let m=0;m<N_MOT;m++){ const row = m*IN_U1; let y = 0; for (let i=0;i<IN_U1;i++) y += V.H[row + i]*fr[i]; g[m] = Math.max(0, Math.min(1.2, y)); }
+  return g;
+}
 
 // ---- voglia di parlare = progresso nell'imparare ----
 // Ogni verso è un'esperienza: confronta quanto sbaglia il modello com'era all'inizio del verso (F, prima di adattarsi
@@ -929,6 +956,7 @@ function voiceStep(firedNow){
   // mentre parla la rete spinge poco anche la bocca: sceglie come comincia il verso, poi la bocca va da sola
   // con il suo rumore lento e la stanchezza. Il ritmo delle sillabe invece lo può accendere anche mentre parla
   if (speaking) for (let k=N_PITCH;k<RHY;k++) mIn[k] *= 0.1;
+  imitPush();                                                      // se sta ridicendo una parola, i suoi gesti spingono forte
   for (let k=N_PITCH;k<N_MOT;k++) mInT[k] = 0.8*mInT[k] + mIn[k];
   // ---- corde vocali ----
   let R = 0; for (let k=0;k<N_PITCH;k++) R += mr[k];
@@ -978,7 +1006,8 @@ function voiceStep(firedNow){
   if (M) playBody(M, audioCtx.currentTime, speaking ? voiceF : 0, voiceAmp, art, aperS, was ? 0.05 : 0.001);   // l'altezza scivola, non salta
   if (speaking && !was){
     speakStart = net.life;
-    if (net.life - lastExternal < 30){ net.replies++; voiceKind = "risposta"; } else { net.babbles++; voiceKind = "lallazione"; }
+    if (imit) voiceKind = "imitazione";
+    else if (net.life - lastExternal < 30){ net.replies++; voiceKind = "risposta"; } else { net.babbles++; voiceKind = "lallazione"; }
     noteVerseStart();
   }
   if (!speaking && was) lastSpeechEnd = net.life;
@@ -1033,6 +1062,7 @@ function selfListen(firedNow){
   // altrimenti potrebbe essere l'eco della mia voce che non so ancora riconoscere bene
   if (ext > 0.8 && !speaking && net.life - lastSpeechEnd > 8){ lastExternal = net.life; noteExternalSound(); }
   // i neuroni dell'udito che scaricano mentre mi riconosco imparano quale gesto produce quel suono
+  if (selfness > 0.4 && loudNow > 0.2) learnInverse(selfness);
   if (selfness > 0.3){
     let mx = 0; for (let k=0;k<N_MOT;k++) if (e1[k] > mx) mx = e1[k];
     if (mx > 0.05) for (const n of firedNow){
@@ -1063,63 +1093,91 @@ function selfListen(firedNow){
 // ======================= le parole: il secondo piano dell'udito =======================
 // Nel cervello l'udito è fatto a piani: il primo sente suoni brevi, quelli sopra ascoltano finestre sempre più lunghe.
 // Qui il primo piano sono i neuroni dell'udito (0,15 secondi); il secondo sono le parole, circa un secondo.
-// Una parola è un suono che arriva da fuori mentre lei tace, finché non torna il silenzio per 0,2 secondi.
-// Alla fine si guarda quali neuroni dell'udito si sono accesi, quanto somigliavano a ciò che sentivano e in quale parte
-// della parola: all'inizio, a metà o alla fine, come fa la memoria per le sequenze. Così conta anche l'ordine
-// («ciao» non è «oaic»), e due parole con le stesse vocali ma consonanti diverse («cane», «pane») non sono la stessa cosa.
+// Una parola è voce che arriva da fuori mentre lei tace, finché non torna il silenzio per 0,2 secondi. Voce vuol dire
+// un suono intonato, con una nota tra 75 e 500 Hz, per almeno 0,15 secondi e almeno un terzo del tempo:
+// una porta, un passo, un piatto non sono parole (prima lo erano, e riempivano di rumori i neuroni delle parole).
+// In ogni istante conta il suono che conosce e che somiglia di più a ciò che sente, e in quale parte della parola arriva:
+// all'inizio, a metà o alla fine, come fa la memoria per le sequenze. Così conta anche l'ordine («ciao» non è «oaic»).
+// Due parole si confrontano suono per suono: due suoni quasi uguali valgono quasi come lo stesso suono, due suoni appena
+// simili quasi niente. Così pesano le differenze vere, vocali e consonanti, e non la voce in generale.
 // Se somiglia almeno al 70% a una parola che conosce la riconosce, e quel neurone si accende e la affina;
 // se no nasce un neurone nuovo che la impara. Una parola sentita una volta sola viene potata dopo 10 minuti;
 // sentita in tre occasioni diverse resta
 let utt = null;
-const UTT_MIN = 3, UTT_MAX = 40, UTT_GAP = 4, SLOTS = 3;
+const UTT_MIN = 3, UTT_MAX = 40, UTT_GAP = 4, SLOTS = 3, VOICED_MIN = 3, SOFT_P = 5;
 const wkey = (id, slot) => id*SLOTS + slot, wid = k => Math.floor(k/SLOTS);   // un suono in una parte della parola
 function wordsStep(){
   if (speaking){ utt = null; return; }                      // mentre parla lei, non ascolta le parole degli altri
-  if (act[A_UDITO] && net.life - lastSpeechEnd > 8){
-    if (!utt) utt = { start: net.life, end: net.life, on: 0, quiet: 0, ev: [] };
+  if (act[A_UDITO] && net.life - lastSpeechEnd > 14){        // la sua voce si spegne piano: per 0,7 s dopo che ha parlato non conta
+    if (!utt) utt = { start: net.life, end: net.life, on: 0, quiet: 0, voiced: 0, fsum: 0, ev: [], fr: [], lastVoiced: -1 };
     utt.on++; utt.quiet = 0; utt.end = net.life;
-    // in ogni istante, i suoni che conosce e che riconoscono ciò che sente (almeno al 70%); se nessuno, il più vicino.
-    // Anche una consonante breve, che dura troppo poco per far scaricare un neurone, lascia il suo segno nella parola.
-    // Ogni istante pesa uguale, diviso tra i suoni che lo riconoscono: la stessa «a» detta su una nota più bassa
-    // accende anche i suoni della «a» più acuta, e la parola resta la stessa
-    let ss = 0, mx = 0, k0 = utt.ev.length;
-    for (const n of net.neurons) if (n.area === A_UDITO && !n.inh && n.s >= VIGILANCE){ utt.ev.push([n.id, net.life, n.s]); ss += n.s*n.s; if (n.s > mx) mx = n.s; }
-    if (ss > 0){ const k = mx/Math.sqrt(ss); for (let i=k0;i<utt.ev.length;i++) utt.ev[i][2] *= k; }
-    else { const b = bestA[A_UDITO]; if (b && bsA[A_UDITO] >= 0.5) utt.ev.push([b.id, net.life, bsA[A_UDITO]]); }
+    utt.fr[net.life - utt.start] = x.slice(OFF_A, END_U1);   // ciò che arrivava all'orecchio, per poterlo rifare
+    if (heardF >= 75 && heardF <= 500){ utt.voiced++; utt.fsum += heardF; utt.lastVoiced = net.life; }
+    // anche una consonante breve, che dura troppo poco per far scaricare un neurone, lascia il suo segno nella parola
+    const b = bestA[A_UDITO]; if (b && bsA[A_UDITO] >= 0.5) utt.ev.push([b.id, net.life, bsA[A_UDITO]]);
   } else if (utt && ++utt.quiet >= UTT_GAP){
-    if (utt.on >= UTT_MIN && utt.on <= UTT_MAX) hearWord(utt);   // più di 2 secondi senza pause è una frase, non una parola
+    if (utt.on >= UTT_MIN && utt.on <= UTT_MAX){            // più di 2 secondi senza pause è una frase, non una parola
+      if (utt.voiced >= VOICED_MIN && utt.voiced >= 0.3*utt.on) hearWord(utt);
+      else { logWord({ k:"rumore", d:utt.on, v:Math.round(100*utt.voiced/utt.on) }); showWord("rumore", true); }
+    }
     utt = null;
   }
 }
-function hearWord(u0){
-  const u = new Map(), len = Math.max(1, u0.end - u0.start);
-  for (const [id, t, s] of u0.ev){
+// i suoni di una parola, ognuno nella sua parte: le parti si sfumano l'una nell'altra
+// (un suono a un quarto della parola è un po' inizio e un po' metà)
+function slotMap(ev, start, end){
+  const u = new Map(), len = Math.max(1, end - start);
+  for (const [id, t, s] of ev){
     if (!byId.has(id)) continue;
-    const p = Math.max(0, Math.min(1, (t - u0.start)/len));
-    // le parti si sfumano l'una nell'altra: un suono a un quarto della parola è un po' inizio e un po' metà
+    const p = Math.max(0, Math.min(1, (t - start)/len));
     for (let k=0;k<SLOTS;k++){
       const v = s*Math.max(0, 1 - Math.abs(p - k/(SLOTS - 1))*(SLOTS - 1));
       if (v > 0.05 && v > (u.get(wkey(id, k)) || 0)) u.set(wkey(id, k), v);
     }
   }
-  if (u.size < 2) return;                                   // un suono solo: troppo poco per una parola
+  return u;
+}
+// quanto si somigliano due suoni dell'udito, da 0 a 1: la somiglianza dei loro pesi, alla quinta.
+// Due suoni quasi uguali (95%) valgono quasi come lo stesso (0,77); due appena simili (70%) quasi niente (0,17)
+let simCache = new Map();
+function soundSim(i, j){
+  if (i === j) return 1;
+  const key = i < j ? i + ":" + j : j + ":" + i;
+  let v = simCache.get(key); if (v !== undefined) return v;
+  const a = byId.get(i), b = byId.get(j); v = 0;
+  if (a && b && a.area === A_UDITO && b.area === A_UDITO){ let d = 0; for (let k=IN_V;k<N_IN;k++) d += a.w[k]*b.w[k]; v = Math.pow(Math.max(0, d), SOFT_P); }
+  simCache.set(key, v); return v;
+}
+function softDot(a, b){ let s = 0; for (const [ka, va] of a) for (const [kb, vb] of b) if (ka % SLOTS === kb % SLOTS) s += va*vb*soundSim(wid(ka), wid(kb)); return s; }
+function wordSim(a, b, nb){ const d = softDot(a, b); return d > 0 ? d/Math.sqrt(softDot(a, a)*(nb ?? softDot(b, b))) : 0; }
+function hearWord(u0){
+  const info = { d: u0.on, v: Math.round(100*u0.voiced/u0.on), f: u0.voiced ? Math.round(u0.fsum/u0.voiced) : 0 };
+  const u = slotMap(u0.ev, u0.start, u0.end);
+  if (u.size < 2){ logWord({ k:"breve", ...info }); return; }   // un suono solo: troppo poco per una parola
   normalizeMap(u);
+  simCache = new Map();                                     // i pesi cambiano piano: le somiglianze si ricalcolano a ogni parola
   let best = null, bs = 0;
-  for (const n of net.neurons){ if (n.area !== A_PAROLE) continue; const s = dotMap(u, n.pw); n.s = s; if (s > bs){ bs = s; best = n; } }
+  for (const n of net.neurons){ if (n.area !== A_PAROLE) continue; const s = wordSim(u, n.pw); n.s = s; if (s > bs){ bs = s; best = n; } }
+  let w;
   if (best && bs >= VIGILANCE){
     // la riconosce: si accende, e affina ciò che sa (più piano, più volte l'ha già sentita)
-    const r = LEARN_RATES[0]*Math.max(CONSOLIDATE_MIN, CONSOLIDATE_K/(CONSOLIDATE_K + best.lk)); best.lk += 1;
-    for (const [k, v] of best.pw) best.pw.set(k, v*(1 - r));
-    for (const [k, v] of u) best.pw.set(k, (best.pw.get(k) || 0) + r*v);
-    normalizeMap(best.pw);
-    useNeuron(best);                                        // risentita in un'altra occasione: dopo tre volte resta
-    best.push = 2; net.wordsKnown = (net.wordsKnown || 0) + 1;
+    w = best;
+    const r = LEARN_RATES[0]*Math.max(CONSOLIDATE_MIN, CONSOLIDATE_K/(CONSOLIDATE_K + w.lk)); w.lk += 1;
+    for (const [k, v] of w.pw) w.pw.set(k, v*(1 - r));
+    for (const [k, v] of u) w.pw.set(k, (w.pw.get(k) || 0) + r*v);
+    normalizeMap(w.pw);
+    useNeuron(w);                                           // risentita in un'altra occasione: dopo tre volte resta
+    w.push = 2; net.wordsKnown = (net.wordsKnown || 0) + 1;
+    logWord({ k:"riconosciuta", n:w.wn, s:Math.round(100*bs), ...info }); showWord(`n. ${w.wn} riconosciuta`);
     if (!net.firsts.wordAgain){ net.firsts.wordAgain = 1; addMoment("udito", "Ha riconosciuto per la prima volta una parola che aveva già sentito"); }
   } else {
-    const c = newWordNeuron(u);
-    c.push = 2; net.wordsNew = (net.wordsNew || 0) + 1;
+    w = newWordNeuron(u);
+    w.push = 2; net.wordsNew = (net.wordsNew || 0) + 1;
+    logWord({ k:"nuova", n:w.wn, s:Math.round(100*bs), ...info }); showWord(`n. ${w.wn} nuova`);
     if (!net.firsts.word){ net.firsts.word = 1; addMoment("udito", "Ha sentito la prima parola: è nato il primo neurone delle parole"); }
   }
+  // la tiene a mente qualche secondo, per provare a ridirla
+  echo = { ev: u0.ev.slice(), fr: u0.fr, start: u0.start, end: u0.end, lastVoiced: u0.lastVoiced, u, word: w, at: net.life, tried: false };
 }
 function newWordNeuron(u){
   makeRoom(null);
@@ -1127,10 +1185,119 @@ function newWordNeuron(u){
   const par = byId.get(top), h = AREA_HOME[A_PAROLE], j = () => (Math.random()-0.5)*0.08;
   const c = makeNeuron(net, new Float32Array(N_IN), par ? par.f : 330, par ? par.id : -1, h[0] + j(), h[1] + j(), h[2] + j(), A_PAROLE);
   c.pw = new Map(u); c.flash = 1; c.occ = 1;              // sentirla è già la prima occasione
+  c.wn = net.wordNum = (net.wordNum || 0) + 1;             // il suo numero, quello che si vede sullo schermo
   net.neurons.push(c); byId.set(c.id, c); net.births++;
   placeNewborn(c); staticDirty = true;
   rings.push({ x:c.x, y:c.y, z:c.z, t:0, kind:"birth" });
   return c;
+}
+// il registro delle parole (e dei rumori scartati, e dei tentativi di ripeterle): va nel salvataggio e nel file
+const WORDLOG_MAX = 300;
+function logWord(e){
+  const L = net.wordLog || (net.wordLog = []);
+  L.push({ t: Date.now(), l: net.life, ...e }); if (L.length > WORDLOG_MAX) L.splice(0, L.length - WORDLOG_MAX);
+}
+// la riga sotto «udito»: l'ultima parola sentita, o ripetuta; dopo qualche secondo si spegne un po'
+let wordShownAt = -1e9;
+function showWord(text, dim){ const e = $("wordNow"); if (!e) return; e.textContent = text; e.classList.toggle("dim", !!dim); wordShownAt = performance.now(); e.style.opacity = 1; }
+
+// ======================= la spinta a imitare =======================
+// Dopo aver sentito una parola la tiene a mente qualche secondo, come la memoria dell'orecchio, e appena tocca a lei
+// (un attimo di silenzio) prova a ridirla: i suoni della parola, uno dopo l'altro e con i loro tempi, spingono i gesti
+// che sa che li producono, molto più di quanto la rete spinga di solito la voce. Un suono che non ha mai fatto lei
+// (la tua voce è più grave della sua) usa i gesti dei suoni suoi che gli somigliano, tanto più quanto gli somigliano.
+// Mentre la ridice si ascolta. Alla fine confronta ciò che ha sentito di sé con la parola, come confronta due parole:
+// se somiglia, la voglia di parlare sale. E ogni suono della parola impara il gesto con cui l'ha appena rifatto,
+// tanto più quanto le è venuto simile: prova dopo prova i gesti si correggono, come nei bambini che imparano a parlare
+let echo = null, imit = null;
+const ECHO_KEEP = 60, IMIT_WAIT = 6;
+const IMIT = { lead: 3, gc: 0.5, gm: 0.25, gr: 0.12 };   // un attimo d'anticipo; quanto spingono corde vocali, bocca e ritmo
+const maxOf = a => { let m = 0; for (let i=0;i<a.length;i++) if (a[i] > m) m = a[i]; return m; };
+// il gesto per fare un suono: il suo, se l'ha imparato sentendosi; se no quello dei suoi suoni che gli somigliano
+function gestureOf(id){
+  const n = byId.get(id); if (!n) return null;
+  if (maxOf(n.mw) > 0.3) return n.mw;
+  const g = new Float32Array(N_MOT); let W = 0;
+  for (const m of net.neurons){
+    if (m.area !== A_UDITO || m.inh || m === n || maxOf(m.mw) <= 0.3) continue;
+    const k = soundSim(id, m.id); if (k < 0.05) continue;
+    W += k; for (let i=0;i<N_MOT;i++) g[i] += k*m.mw[i];
+  }
+  if (W < 0.05) return null;                                // niente che gli somigli: questo suono non sa ancora come farlo
+  for (let i=0;i<N_MOT;i++) g[i] /= W;
+  return g;
+}
+// un passo dell'imitazione: decide se cominciare, e mentre ridice la parola ascolta ciò che fa
+function imitStep(){
+  if (imit){
+    const I = imit; I.k++;
+    if (speaking){
+      if (I.s0 < 0) I.s0 = net.life;
+      const b = bestA[A_UDITO];
+      if (b && bsA[A_UDITO] >= 0.5){ const mx = maxOf(e1) || 1; I.heard.push([b.id, net.life, bsA[A_UDITO], Float32Array.from(e1, v => v/mx)]); }
+    }
+    const over = I.k > I.len + 40 || (I.s0 >= 0 && !speaking) || (I.s0 < 0 && I.k > I.len + 10);
+    if (over) endImitation();
+    return;
+  }
+  if (!echo || echo.tried) return;
+  if (net.life - echo.at > ECHO_KEEP){ echo = null; return; }
+  if (!voiceOn || needAir || breath < 0.35 || utt) return;   // senza fiato no; e se l'altro sta ancora parlando aspetta il suo turno
+  if (net.life - echo.at < IMIT_WAIT) return;              // un attimo di silenzio prima di rispondere
+  if (speaking && speakStart < echo.at) return;            // un verso suo cominciato prima: non è una risposta
+  echo.tried = true;
+  simCache = new Map();
+  // il piano: istante per istante, il gesto che rifarebbe ciò che ha sentito. Finché il modello inverso è ancora
+  // acerbo (meno di 15 secondi passati a sentirsi) usa i gesti dei suoni che conosce. Dopo l'ultimo istante di voce
+  // c'è solo la coda del suono che si spegne: lì la parola è finita
+  const len = echo.end - echo.start + 1, plan = new Array(len).fill(null), useH = net.voice.hn >= 300;
+  const last = echo.lastVoiced >= 0 ? echo.lastVoiced - echo.start + 1 : len - 1;
+  if (useH) for (let i=0;i<=last && i<len;i++){ if (echo.fr[i]) plan[i] = inverseOf(echo.fr[i]); }
+  else for (const [id, t] of echo.ev){ const i = t - echo.start; if (i >= 0 && i <= last && !plan[i]) plan[i] = gestureOf(id); }
+  let planEnd = 0; for (let i=0;i<len;i++) if (plan[i]) planEnd = i + 1;
+  imit = { echo, k: 0, len: planEnd, plan, planEnd, heard: [], s0: -1 };
+  net.imitations = (net.imitations || 0) + 1;
+  if (!net.firsts.imitTry){ net.firsts.imitTry = 1; addMoment("voce", "Ha provato per la prima volta a ripetere una parola che ha sentito"); }
+  showWord(`ripete n. ${echo.word.wn}…`);
+}
+// la spinta dell'imitazione sui neuroni motori, in questo passo (un attimo prima del suono, perché la bocca ci mette un po')
+function imitPush(){
+  // mentre qualcuno parla lei ascolta: non comincia a parlargli sopra (a turno, come i bambini)
+  if (utt && !speaking && !imit) for (let k=0;k<N_PITCH;k++) mIn[k] -= 0.25;
+  if (!imit) return;
+  const i = imit.k + IMIT.lead, g = imit.plan[i];
+  if (g){
+    for (let k=0;k<N_PITCH;k++) mIn[k] += IMIT.gc*g[k];
+    for (let k=N_PITCH;k<RHY;k++) mIn[k] += IMIT.gm*g[k];
+    mIn[RHY] += IMIT.gr*g[RHY];
+  } else if (i >= imit.planEnd){
+    // la parola è finita: le corde vocali si rilassano e la voce si ferma, invece di continuare per conto suo
+    for (let k=0;k<N_PITCH;k++) mIn[k] -= 0.6;
+    mIn[RHY] -= 0.5;
+  }
+}
+function endImitation(){
+  const I = imit; imit = null; const E = I.echo;
+  if (!I.heard.length){ logWord({ k:"ripete", n:E.word.wn, s:0 }); showWord(`n. ${E.word.wn}: non ci riesce`, true); return; }
+  const h0 = I.heard[0][1], h1 = I.heard[I.heard.length - 1][1];
+  simCache = new Map();
+  const mine = slotMap(I.heard, h0, h1); normalizeMap(mine);
+  const m = mine.size ? wordSim(E.u, mine) : 0;
+  // ogni suono della parola impara il gesto con cui l'ha rifatto, tanto più quanto le è venuto simile
+  const elen = Math.max(1, E.end - E.start), hlen = Math.max(1, h1 - h0);
+  for (const [id, t, , g] of I.heard){
+    const te = E.start + Math.round((t - h0)/hlen*elen);
+    let target = null, bd = 1e9; for (const ev of E.ev){ const d = Math.abs(ev[1] - te); if (d < bd){ bd = d; target = ev[0]; } }
+    const n = byId.get(target); if (!n || n.area !== A_UDITO || n.inh) continue;
+    const k = soundSim(target, id);
+    if (k > 0.05) for (let i=0;i<N_MOT;i++) n.mw[i] += 0.15*k*(g[i] - n.mw[i]);
+  }
+  // se le è venuta simile, la voglia di parlare sale
+  const V = net.voice; V.voglia = Math.min(1, V.voglia + 0.3*Math.max(0, m - 0.4));
+  if (m >= VIGILANCE){ net.imitGood = (net.imitGood || 0) + 1;
+    if (!net.firsts.imitOk){ net.firsts.imitOk = 1; addMoment("voce", `Ha ripetuto una parola: le è venuta simile al ${Math.round(100*m)}%`); } }
+  logWord({ k:"ripete", n:E.word.wn, s:Math.round(100*m), d:I.heard.length });
+  showWord(`n. ${E.word.wn} ripetuta ${Math.round(100*m)}%`);
 }
 
 // ======================= la vita: un passo =======================
@@ -1190,6 +1357,7 @@ function stepInner(){
   for (let ar=0; ar<2; ar++) novA[ar] = act[ar] ? 1 - Math.max(0, bsA[ar]) : 0;
   if (awake) novelty = novelty*0.8 + Math.max(novA[0], novA[1])*0.2; else novelty *= 0.95;
   wordsStep();                                     // le parole: alla fine di ogni parola sentita
+  imitStep();                                      // e la voglia di ridirla
 
   for (const n of N){ n.pred *= 0.85; n.tr *= TRACE_DECAY; }
   traced = traced.filter(m => { const keep = m.tr >= 0.05 && byId.has(m.id); if (!keep) m.inTr = false; return keep; });
@@ -1749,6 +1917,7 @@ function updateStats(){
   $("echoNote").hidden = !echoOn;
   const br = Math.round(breath*100); $("breV").textContent = br + "%"; $("breB").style.width = br + "%";
   $("earTxt").textContent = heardF ? `${Math.round(heardF)} Hz` : "–";
+  if (performance.now() - wordShownAt > 6000) $("wordNow").style.opacity = 0.45;
   $("sN").textContent = net.neurons.length;
   // giallo: il telefono è al limite, i nuovi neuroni sostituiscono i meno usati
   $("sN").style.color = tooBusy() ? "var(--accent)" : "";
@@ -1774,19 +1943,24 @@ function unb64(s){ const b = atob(s), u = new Uint8Array(b.length); for (let i=0
 const r3 = v => Math.round(v*1000)/1000;
 const packF = a => b64(Uint8Array.from(a, v => Math.round(Math.max(0, Math.min(2, v))*127)));
 const unpackF = s => { const u = unb64(s); return u.length === N_MOT*N_AUD ? Float32Array.from(u, v => v/127) : new Float32Array(N_MOT*N_AUD); };
+// il modello inverso ha anche pesi negativi: un byte con segno, da -4 a 4
+const packH = a => b64(new Uint8Array(Int8Array.from(a, v => Math.max(-127, Math.min(127, Math.round(v*31)))).buffer));
+const unpackH = s => { const q = s ? new Int8Array(unb64(s).buffer) : null; return q && q.length === N_MOT*IN_U1 ? Float32Array.from(q, v => v/31) : new Float32Array(N_MOT*IN_U1); };
 function serialize(){ return JSON.stringify(serializeObj()); }
 function serializeObj(){ return { ...headObj(), neurons: net.neurons.map(neuronRec) }; }
 function headObj(){
   return { v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, merges:net.merges || 0, babbles:net.babbles, replies:net.replies,
-    wordsNew:net.wordsNew || 0, wordsKnown:net.wordsKnown || 0, nextId:net.nextId,
+    wordsNew:net.wordsNew || 0, wordsKnown:net.wordsKnown || 0, wordNum:net.wordNum || 0, imitations:net.imitations || 0, imitGood:net.imitGood || 0,
+    wordLog:net.wordLog || [], nextId:net.nextId,
     firsts: net.firsts, bornAt: net.bornAt,
-    voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2) } };
+    voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2),
+             H:packH(net.voice.H), hn:net.voice.hn || 0 } };
 }
 // ogni neurone salva la sua area e solo i pesi della sua area: 48 la vista, 156 l'udito; una parola i suoni che ascolta
 function neuronRec(n){
   const rec = { id:n.id, p:n.p, a:n.area, ...(n.inh ? { i:1 } : {}), f:Math.round(n.f*100)/100, th:r3(n.th), tb:r3(n.base), r:Math.round(n.rate*1e5)/1e5, last:n.last, b:n.born, o:n.occ, st:n.stable ? 1 : 0, u:Math.round(n.use*10)/10, fires:n.fires, k:Math.round(n.lk*10)/10, x:r3(n.x), y:r3(n.y), z:r3(n.z),
            m:b64(Uint8Array.from(n.mw, v => Math.round(v*255))), s:n.syn.map(s => [s.t, Math.round(s.w*255)]) };
-  if (n.area === A_PAROLE) rec.pw = [...n.pw].map(([id, v]) => [id, Math.round(v*1000)]);
+  if (n.area === A_PAROLE){ rec.pw = [...n.pw].map(([id, v]) => [id, Math.round(v*1000)]); rec.wn = n.wn; }
   else {
     const [a, z] = AREA_IN[n.area], q = new Int8Array(z - a);
     for (let i=a;i<z;i++) q[i-a] = Math.max(-127, Math.min(127, Math.round(n.w[i]*127)));
@@ -1830,11 +2004,13 @@ function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
   const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, merges:d.merges|0, babbles:d.babbles|0, replies:d.replies|0,
-              wordsNew:d.wordsNew|0, wordsKnown:d.wordsKnown|0, nextId:d.nextId|0, neurons:[], voice:newVoiceMind(),
+              wordsNew:d.wordsNew|0, wordsKnown:d.wordsKnown|0, wordNum:d.wordNum|0, imitations:d.imitations|0, imitGood:d.imitGood|0,
+              wordLog: Array.isArray(d.wordLog) ? d.wordLog.slice(-WORDLOG_MAX) : [], nextId:d.nextId|0, neurons:[], voice:newVoiceMind(),
               firsts: (d.firsts && typeof d.firsts === "object") ? d.firsts : null, bornAt: +d.bornAt || null };
   if (d.voice && d.voice.F1){
     const V = n.voice; V.voglia = +d.voice.voglia || 0.5; V.prog = +d.voice.prog || 0;
     V.F1 = unpackF(d.voice.F1); V.F2 = unpackF(d.voice.F2); V.G1 = unpackF(d.voice.G1); V.G2 = unpackF(d.voice.G2);
+    V.H = unpackH(d.voice.H); V.hn = d.voice.H ? (d.voice.hn|0) : 0;
   }
   const legacy = d.neurons[0].a === undefined, twins = [];
   for (const s of d.neurons.slice(0, MAX_NEURONS)){
@@ -1848,7 +2024,7 @@ function deserialize(text){
     if (!legacy){
       const ar = s.a|0; if (ar < A_VISTA || ar > A_PAROLE) throw new Error("file non valido");
       m.area = ar; m.lk = Math.max(0, +s.k || 0); m.w = new Float32Array(N_IN);
-      if (ar === A_PAROLE) m.pw = normalizeMap(new Map((Array.isArray(s.pw) ? s.pw : []).map(([k, v]) => [k, v/1000])));
+      if (ar === A_PAROLE){ m.pw = normalizeMap(new Map((Array.isArray(s.pw) ? s.pw : []).map(([k, v]) => [k, v/1000]))); m.wn = s.wn|0; }
       else {
         const q = new Int8Array(unb64(s.w).buffer), [a, z] = AREA_IN[ar];
         if (q.length !== z - a) throw new Error("file non valido");
@@ -1883,6 +2059,9 @@ function deserialize(text){
     a.syn.push({ t: c.id, w: 0.5 });
     n.neurons.push(c);
   }
+  // le parole salvate dalla versione 27 non avevano un numero: lo prendono in ordine di nascita
+  for (const m of n.neurons.filter(m => m.area === A_PAROLE && !m.wn).sort((a, b) => a.born - b.born)) m.wn = ++n.wordNum;
+  n.wordNum = Math.max(n.wordNum, ...n.neurons.map(m => m.wn || 0));
   // le aree vanno ognuna al suo posto, come i lobi del cervello, tenendo la forma che avevano
   if (legacy) for (let ar=0; ar<2; ar++){
     const L = n.neurons.filter(m => m.area === ar); if (!L.length) continue;
@@ -1935,7 +2114,7 @@ function saveSlice(budget){
   idbPut(data).then(() => { if (!saveJob) savedState(data.length); }).catch(() => {});
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ saveJob = null; rawH.fill(0); needAir = false; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ utt = null; echo = null; imit = null; saveJob = null; rawH.fill(0); needAir = false; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
@@ -1975,6 +2154,7 @@ function snapRecord(){
            b: net.births, p: net.prunes, fu: net.merges || 0, vb: net.babbles, vr: net.replies,
            av: N.reduce((a, m) => a + (m.area === A_VISTA ? 1 : 0), 0), au: N.reduce((a, m) => a + (m.area === A_UDITO ? 1 : 0), 0),
            ap: N.reduce((a, m) => a + (m.area === A_PAROLE ? 1 : 0), 0), pn: net.wordsNew || 0, pr: net.wordsKnown || 0,
+           im: net.imitations || 0, ib: net.imitGood || 0,
            vo: Math.round((accN ? accVo/accN : net.voice.voglia)*100), sr: Math.round((accN ? accSr/accN : selfSeen)*100) };
 }
 function diaryRecord(){
@@ -2218,7 +2398,7 @@ async function wake(){
 async function sleep(){
   if (!running) return;
   running = false; clearInterval(timer);
-  speaking = false; hushVoice();
+  speaking = false; hushVoice(); utt = null; echo = null; imit = null;
   stopCamera(); stopMic();
   try { if (wakeLock) await wakeLock.release(); } catch(e) {}
   relaxLayout(net.neurons.length > 600 ? 80 : 200);     // dormendo si riorganizza
