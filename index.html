@@ -183,6 +183,8 @@ table.dt{width:100%;border-collapse:collapse;font-size:11px}
 .nexit{position:absolute;left:0;right:0;margin:0 auto;width:max-content;bottom:calc(env(safe-area-inset-bottom) + 32px);flex:0 0 auto;min-height:46px;padding:8px 20px;border-radius:12px;background:#0b0d12;border:1px solid #232a37;color:#8a94a6;font-size:14px}
 .eyeoff{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim);pointer-events:none}
 .note{font-size:10px;color:#ffb27a;margin-top:2px;line-height:1.3}
+.ver{font-size:12px;color:var(--dim);margin:-6px 0 10px}
+.ver b{color:var(--accent);font-weight:600}
 button{flex:1 1 auto;min-height:40px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:13px}
 button:active{transform:scale(.98)}
 button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:650;font-size:15px}
@@ -258,6 +260,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <div id="sheet" class="hidden">
   <div class="box" role="dialog" aria-label="La rete">
     <h2>La rete</h2>
+    <p class="ver" id="verLine"></p>
     <div class="tiles2">
       <button class="tile" id="openDiary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M5 15l4-4 3 3 7-7"/><path d="M15 7h4v4"/></svg><b>Diario</b><span>crescita, momenti e copie</span></button>
       <button class="tile" id="nightBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><path d="M17.5 3v3M16 4.5h3"/></svg><b>Modalità notte</b><span>schermo nero, lei resta sveglia</span></button>
@@ -317,7 +320,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 
 <section id="healthPage" class="page" role="dialog" aria-label="Salute" hidden>
   <header class="pg-head">
-    <div><h2>Salute</h2><p>Come gira la rete su questo telefono, negli ultimi 20 secondi</p></div>
+    <div><h2>Salute</h2><p><b id="hVer"></b> · come gira la rete su questo telefono, negli ultimi 20 secondi</p></div>
     <button class="iconbtn" id="healthClose" aria-label="Chiudi la salute"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </header>
   <div class="pg-body">
@@ -349,7 +352,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 28;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 29;                // la versione dell'app (la stessa della memoria del service worker)
 // vista, bande dell'udito, altezza, sagoma del suono, attacchi.
 // Gli attacchi sono come le cellule d'attacco dell'orecchio: si accendono quando in una banda il suono cresce di colpo
 // (lo scoppio di una «p», il fruscio di una «c», una vocale che comincia) e tacciono finché un suono resta uguale.
@@ -2977,7 +2980,25 @@ addEventListener("resize", () => { if (diaryOpen && diaryTab === "crescita") doc
 // con il diario aperto i numeri di "adesso" si aggiornano ogni minuto (ma non mentre stai leggendo un valore)
 setInterval(() => { if (diaryOpen && diaryTab === "crescita" && running && !document.querySelector("#tab-crescita .tip:not([hidden])")) renderGrowth(); }, 60000);
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+// la versione si vede in «Altro» (sotto il titolo) e in «Salute»
+function showVersion(newer){
+  $("verLine").innerHTML = `Rete Viva · versione ${VERSIONE}` + (newer ? ` · <b>c'è una versione nuova: chiudi l'app e riaprila</b>` : "");
+  $("hVer").textContent = `Versione ${VERSIONE}` + (newer ? " (ne è pronta una nuova: chiudi l'app e riaprila)" : "");
+}
+showVersion(false);
+// quando è pronta una versione nuova lo dice: sull'iPhone l'app resta in memoria, e la pagina nuova arriva solo
+// chiudendola e riaprendola. Mentre è aperta controlla ogni mezz'ora se ce n'è una, e quando torni all'app
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(reg => {
+  let told = false, lastCheck = Date.now();
+  const ready = () => { if (told) return; told = true; showVersion(true); showToast({ k: "sistema", x: "È pronta una versione nuova: chiudi l'app e riaprila" }); };
+  reg.addEventListener("updatefound", () => {
+    const w = reg.installing; if (!w || !navigator.serviceWorker.controller) return;   // la prima volta non è un aggiornamento
+    w.addEventListener("statechange", () => { if (w.state === "installed" || w.state === "activated") ready(); });
+  });
+  const check = () => { lastCheck = Date.now(); reg.update().catch(() => {}); };
+  setInterval(check, 30*60*1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - lastCheck > 5*60*1000) check(); });
+}).catch(() => {});
 refreshButtons();
 reindex();
 load();
