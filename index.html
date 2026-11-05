@@ -352,7 +352,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 29;                // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 30;              // la versione dell'app (la stessa della memoria del service worker)
 // vista, bande dell'udito, altezza, sagoma del suono, attacchi.
 // Gli attacchi sono come le cellule d'attacco dell'orecchio: si accendono quando in una banda il suono cresce di colpo
 // (lo scoppio di una «p», il fruscio di una «c», una vocale che comincia) e tacciono finché un suono resta uguale.
@@ -431,7 +431,7 @@ let byId = new Map();
 function reindex(){ byId = new Map(net.neurons.map(n => [n.id, n])); }
 
 function fresh(){
-  const n = { life:0, births:0, prunes:0, merges:0, babbles:0, replies:0, wordsNew:0, wordsKnown:0, wordNum:0, imitations:0, imitGood:0, wordLog:[], nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
+  const n = { life:0, births:0, prunes:0, merges:0, babbles:0, replies:0, wordsNew:0, wordsKnown:0, wordsHeard:0, farVoices:0, noiseHeard:0, wordNum:0, imitations:0, imitGood:0, wordLog:[], nextId:0, neurons:[], voice:newVoiceMind(), firsts:{}, bornAt:Date.now() };
   const tones = [220, 277.18, 329.63, 415.3];
   // due neuroni per la vista e due per l'udito; uno della vista è inibitorio. Le parole nascono quando le sente
   const areas = [A_VISTA, A_VISTA, A_UDITO, A_UDITO];
@@ -648,7 +648,7 @@ function shapeFromBytes(fq, sr, fftSize, f0, out){
 // alla rete arriva la sagoma per differenza (cosa c'è di più o di meno della media), come fa l'inibizione laterale dell'orecchio
 function encodeShape(){ let m = 0; for (let b=0;b<IN_S;b++) m += sin[b]; m /= IN_S; for (let b=0;b<IN_S;b++) x[OFF_S+b] = m > 0 ? sin[b] - m : 0; }
 function readHearing(){
-  if (!analyser){ for (let i=0;i<IN_A;i++){ x[OFF_A+i] = x[OFF_O+i] = 0; earBars[i].style.height="1px"; } heardF = 0; heardClar = 0; encodePitch(0,0); sin.fill(0); encodeShape(); return; }
+  if (!analyser){ for (let i=0;i<IN_A;i++){ x[OFF_A+i] = x[OFF_O+i] = 0; earBars[i].style.height="1px"; } heardF = 0; heardClar = 0; levelDb = -100; encodePitch(0,0); sin.fill(0); encodeShape(); return; }
   [heardF, heardClar] = detectPitch(); encodePitch(heardF, heardClar);
   // quanto forte sente la propria voce: mentre parla, di quanti decibel il microfono sta sopra il fondo
   if (speaking && net.life - speakStart > 2) selfDb = 0.9*selfDb + 0.1*Math.max(0, 20*Math.log10(micRms/noiseRms));
@@ -659,7 +659,13 @@ function readHearing(){
 // le 16 bande, ognuna rispetto al suo fondo che si adatta piano; e gli attacchi: quanto è cresciuta ogni banda
 // rispetto a un attimo prima (circa un decimo di secondo). Nello spettro 70 dB valgono 1: dieci decibel in più accendono molto
 const onRef = new Float32Array(IN_A), ON_FROM = 3;
+// quanto è forte il suono adesso, in decibel, tra 190 e 4000 Hz circa (dove sta la voce): serve a capire
+// se una voce le parla da vicino o arriva da lontano (la TV, qualcuno nell'altra stanza)
+const DB2P = Float32Array.from({ length: 256 }, (_, b) => Math.pow(10, ((b/255)*70 - 100)/10)), LV_A = 8, LV_Z = 170;
+let levelDb = -100;
 function hearBands(fq){
+  let pw = 0; for (let k=LV_A; k<=LV_Z; k++) pw += DB2P[fq[k]];
+  levelDb = 10*Math.log10(pw/(LV_Z - LV_A + 1) + 1e-12);
   const lo = 8, hi = Math.min(fq.length - 1, 880);
   for (let b=0; b<IN_A; b++){
     const a = Math.floor(lo * Math.pow(hi/lo, b/IN_A)), z = Math.max(a+1, Math.floor(lo * Math.pow(hi/lo, (b+1)/IN_A)));
@@ -1096,35 +1102,89 @@ function selfListen(firedNow){
 // ======================= le parole: il secondo piano dell'udito =======================
 // Nel cervello l'udito è fatto a piani: il primo sente suoni brevi, quelli sopra ascoltano finestre sempre più lunghe.
 // Qui il primo piano sono i neuroni dell'udito (0,15 secondi); il secondo sono le parole, circa un secondo.
-// Una parola è voce che arriva da fuori mentre lei tace, finché non torna il silenzio per 0,2 secondi. Voce vuol dire
-// un suono intonato, con una nota tra 75 e 500 Hz, per almeno 0,15 secondi e almeno un terzo del tempo:
-// una porta, un passo, un piatto non sono parole (prima lo erano, e riempivano di rumori i neuroni delle parole).
+// Le parole le impara solo dalle voci che le parlano da vicino, come i bambini, che le imparano da chi parla con loro
+// e non dalla televisione. Il suono della stanza è la media degli ultimi 10 secondi, in decibel, senza la sua voce e senza
+// le parole che le dicono da vicino: la TV o qualcuno nell'altra stanza ne fanno parte, tu che le parli a mezzo metro no.
+// Una voce vicina comincia quando sale almeno 15 decibel sopra la stanza (con i suoi primi istanti più deboli, cioè la
+// consonante iniziale) e finisce quando per 0,2 secondi torna vicina al suono della stanza: così, anche con la TV accesa,
+// le tue parole hanno un inizio e una fine. Prima una parola finiva solo con il silenzio, che in una casa vera non c'è
+// quasi mai. Ciò che esce dal suono della stanza ma non abbastanza è una voce lontana o un rumore; e un suono nuovo comincia
+// salendo: la coda di un suono che si spegne non è un suono nuovo. Voce vuol dire un suono intonato, con una nota tra
+// 75 e 500 Hz, per almeno 0,15 secondi e almeno un terzo del tempo: una porta, un passo, un piatto non sono parole.
+// Mentre una voce vicina le parla lei ascolta e non le parla sopra; la TV, le voci lontane e i rumori non la fermano
+// (prima si fermava per qualsiasi suono, e in una casa dove c'è sempre qualcosa non parlava quasi più).
 // In ogni istante conta il suono che conosce e che somiglia di più a ciò che sente, e in quale parte della parola arriva:
 // all'inizio, a metà o alla fine, come fa la memoria per le sequenze. Così conta anche l'ordine («ciao» non è «oaic»).
 // Due parole si confrontano suono per suono: due suoni quasi uguali valgono quasi come lo stesso suono, due suoni appena
 // simili quasi niente. Così pesano le differenze vere, vocali e consonanti, e non la voce in generale.
-// Se somiglia almeno al 70% a una parola che conosce la riconosce, e quel neurone si accende e la affina;
-// se no nasce un neurone nuovo che la impara. Una parola sentita una volta sola viene potata dopo 10 minuti;
-// sentita in tre occasioni diverse resta
-let utt = null;
+// Una parola è un suono che torna, come per i bambini, che scoprono le parole proprio perché si ripetono.
+// Se somiglia almeno all'80% a una parola che conosce la riconosce, e quel neurone si accende e la affina. Per le parole
+// la soglia è più alta che per i neuroni dell'udito (70%): due parole diverse dette dalla stessa voce si somigliano già
+// al 70-80%, e con il 70% una rete giovane confondeva «ciao» e «va bene».
+// Se no la tiene nella memoria breve (5 minuti), senza neurone: quando la risente simile, la memoria si fa più precisa;
+// alla terza volta nasce il neurone della parola. Un rumore o una frase della TV di rado tornano uguali; «ciao» detto
+// da te sì. Prima nasceva un neurone per ogni voce, e ogni suono diventava una parola
+let utt = null, far = null;
 const UTT_MIN = 3, UTT_MAX = 40, UTT_GAP = 4, SLOTS = 3, VOICED_MIN = 3, SOFT_P = 5;
+const WORD_VIG = 0.8, NEAR_DB = 15, KEEP_DB = 11, START_DB = 6, AMB_T = 200, PRE = 3, WORD_TIMES = 3, CAND_KEEP = HZ*60*5, CAND_MAX = 40;
 const wkey = (id, slot) => id*SLOTS + slot, wid = k => Math.floor(k/SLOTS);   // un suono in una parte della parola
+let ambDb = null, lvS = -100, cands = [], farFrom = 0;
+const preQ = [];                                             // gli ultimi istanti, per non perdere l'inizio di una parola
+const isVoiced = () => heardF >= 75 && heardF <= 500;
+function uttAdd(u, s){
+  if (u.start < 0) u.start = s.l;
+  u.on++; u.quiet = 0; u.end = s.l; u.fr[s.l - u.start] = s.fr;
+  if (s.v){ u.voiced++; u.fsum += s.f; u.lastVoiced = s.l; }
+  if (s.lv > u.peak) u.peak = s.lv;
+  if (s.e) u.ev.push(s.e);
+}
+const newUtt = ref => ({ start: -1, end: -1, on: 0, quiet: 0, voiced: 0, fsum: 0, ev: [], fr: [], lastVoiced: -1, ref, peak: -100 });
 function wordsStep(){
-  if (speaking){ utt = null; return; }                      // mentre parla lei, non ascolta le parole degli altri
-  if (act[A_UDITO] && net.life - lastSpeechEnd > 14){        // la sua voce si spegne piano: per 0,7 s dopo che ha parlato non conta
-    if (!utt) utt = { start: net.life, end: net.life, on: 0, quiet: 0, voiced: 0, fsum: 0, ev: [], fr: [], lastVoiced: -1 };
-    utt.on++; utt.quiet = 0; utt.end = net.life;
-    utt.fr[net.life - utt.start] = x.slice(OFF_A, END_U1);   // ciò che arrivava all'orecchio, per poterlo rifare
-    if (heardF >= 75 && heardF <= 500){ utt.voiced++; utt.fsum += heardF; utt.lastVoiced = net.life; }
-    // anche una consonante breve, che dura troppo poco per far scaricare un neurone, lascia il suo segno nella parola
-    const b = bestA[A_UDITO]; if (b && bsA[A_UDITO] >= 0.5) utt.ev.push([b.id, net.life, bsA[A_UDITO]]);
-  } else if (utt && ++utt.quiet >= UTT_GAP){
-    if (utt.on >= UTT_MIN && utt.on <= UTT_MAX){            // più di 2 secondi senza pause è una frase, non una parola
-      if (utt.voiced >= VOICED_MIN && utt.voiced >= 0.3*utt.on) hearWord(utt);
-      else { logWord({ k:"rumore", d:utt.on, v:Math.round(100*utt.voiced/utt.on) }); showWord("rumore", true); }
-    }
-    utt = null;
+  lvS = 0.5*lvS + 0.5*levelDb;                               // il suono di adesso, un po' smussato
+  if (ambDb === null) ambDb = levelDb;
+  const mine = speaking || net.life - lastSpeechEnd <= 14;   // la sua voce si spegne piano: per 0,7 s dopo che ha parlato non conta
+  // il suono della stanza: senza la sua voce e senza chi le sta dicendo una parola da vicino
+  if (!mine && !(utt && utt.on <= UTT_MAX)) ambDb += (levelDb - ambDb)/AMB_T;
+  if (mine){ utt = far = null; preQ.length = 0; return; }    // mentre parla lei, non ascolta le parole degli altri
+  // ciò che arriva in questo istante: quanto è forte, se è voce, e il suono che conosce che gli somiglia di più
+  // (anche una consonante breve, che dura troppo poco per far scaricare un neurone, lascia il suo segno nella parola)
+  const b = bestA[A_UDITO], s = { l: net.life, lv: lvS, v: isVoiced(), f: heardF, fr: x.slice(OFF_A, END_U1),
+    e: b && bsA[A_UDITO] >= 0.5 ? [b.id, net.life, bsA[A_UDITO]] : null, on: act[A_UDITO] };
+  preQ.push(s); if (preQ.length > PRE + 1) preQ.shift();
+  if (utt){
+    // una voce vicina: continua finché resta forte, anche se intorno c'è la TV
+    if (s.on && s.lv >= utt.ref + KEEP_DB) uttAdd(utt, s);
+    else if (++utt.quiet >= UTT_GAP){ endUtt(utt, true); utt = null; farFrom = net.life + 8; }   // la sua coda che si spegne non è un altro suono
+    return;
   }
+  // un suono nuovo comincia salendo; la coda di un suono (o della sua voce) che si spegne scende, e non è un suono nuovo
+  const rising = preQ.length >= 2 && s.lv > preQ[preQ.length - 2].lv + 1;
+  if (s.on && rising && s.lv >= ambDb + NEAR_DB){
+    // comincia una voce vicina; con i suoi primi istanti più deboli, se c'erano (la consonante iniziale)
+    utt = newUtt(ambDb); far = null;
+    let i = preQ.length - 1; while (i > 0 && preQ[i - 1].on && preQ[i - 1].lv >= ambDb + START_DB && preQ.length - i <= PRE) i--;
+    for (let j=i; j<preQ.length; j++) uttAdd(utt, preQ[j]);
+    return;
+  }
+  // un suono che esce dal suono della stanza ma non abbastanza da essere vicino: una voce lontana o un rumore
+  if (far){ if (s.on && s.lv >= far.ref + START_DB) uttAdd(far, s); else if (++far.quiet >= UTT_GAP){ endUtt(far, false); far = null; } }
+  else if (s.on && rising && s.lv >= ambDb + START_DB && net.life >= farFrom){ far = newUtt(ambDb); uttAdd(far, s); }
+}
+function endUtt(u, near){
+  if (u.on < UTT_MIN || u.on > UTT_MAX) return;              // più di 2 secondi senza pause è una frase, non una parola
+  const g = Math.round(u.peak - u.ref), v = Math.round(100*u.voiced/u.on);
+  if (u.voiced < VOICED_MIN || u.voiced < 0.3*u.on){ net.noiseHeard = (net.noiseHeard || 0) + 1; logSome({ k:"rumore", d:u.on, v, g }); showWord("rumore", true); }
+  else if (!near){ net.farVoices = (net.farVoices || 0) + 1; logSome({ k:"lontana", d:u.on, v, g, f:Math.round(u.fsum/u.voiced) }); showWord("voce lontana", true); }
+  else hearWord(u);
+}
+// le voci lontane e i rumori si contano tutti, ma nel registro ne va al massimo uno ogni 5 secondi per tipo,
+// con quanti altri ce n'erano stati nel frattempo: se no, con la TV accesa, riempirebbero il registro in pochi minuti
+const quietLog = {};
+function logSome(e){
+  const q = quietLog[e.k] || (quietLog[e.k] = { at: -1e9, skip: 0 });
+  if (net.life - q.at < 100 && net.life >= q.at){ q.skip++; return; }
+  if (q.skip) e.altre = q.skip;
+  logWord(e); q.at = net.life; q.skip = 0;
 }
 // i suoni di una parola, ognuno nella sua parte: le parti si sfumano l'una nell'altra
 // (un suono a un quarto della parola è un po' inizio e un po' metà)
@@ -1154,7 +1214,7 @@ function soundSim(i, j){
 function softDot(a, b){ let s = 0; for (const [ka, va] of a) for (const [kb, vb] of b) if (ka % SLOTS === kb % SLOTS) s += va*vb*soundSim(wid(ka), wid(kb)); return s; }
 function wordSim(a, b, nb){ const d = softDot(a, b); return d > 0 ? d/Math.sqrt(softDot(a, a)*(nb ?? softDot(b, b))) : 0; }
 function hearWord(u0){
-  const info = { d: u0.on, v: Math.round(100*u0.voiced/u0.on), f: u0.voiced ? Math.round(u0.fsum/u0.voiced) : 0 };
+  const info = { d: u0.on, v: Math.round(100*u0.voiced/u0.on), f: u0.voiced ? Math.round(u0.fsum/u0.voiced) : 0, g: Math.round(u0.peak - u0.ref) };
   const u = slotMap(u0.ev, u0.start, u0.end);
   if (u.size < 2){ logWord({ k:"breve", ...info }); return; }   // un suono solo: troppo poco per una parola
   normalizeMap(u);
@@ -1162,7 +1222,7 @@ function hearWord(u0){
   let best = null, bs = 0;
   for (const n of net.neurons){ if (n.area !== A_PAROLE) continue; const s = wordSim(u, n.pw); n.s = s; if (s > bs){ bs = s; best = n; } }
   let w;
-  if (best && bs >= VIGILANCE){
+  if (best && bs >= WORD_VIG){
     // la riconosce: si accende, e affina ciò che sa (più piano, più volte l'ha già sentita)
     w = best;
     const r = LEARN_RATES[0]*Math.max(CONSOLIDATE_MIN, CONSOLIDATE_K/(CONSOLIDATE_K + w.lk)); w.lk += 1;
@@ -1174,24 +1234,44 @@ function hearWord(u0){
     logWord({ k:"riconosciuta", n:w.wn, s:Math.round(100*bs), ...info }); showWord(`n. ${w.wn} riconosciuta`);
     if (!net.firsts.wordAgain){ net.firsts.wordAgain = 1; addMoment("udito", "Ha riconosciuto per la prima volta una parola che aveva già sentito"); }
   } else {
-    w = newWordNeuron(u);
+    // non è una parola che conosce: la cerca nella memoria breve, tra le voci sentite da vicino negli ultimi minuti
+    net.wordsHeard = (net.wordsHeard || 0) + 1;
+    cands = cands.filter(c => net.life - c.last <= CAND_KEEP && c.last <= net.life);
+    let bc = null, cs = 0; for (const c of cands){ const s = wordSim(u, c.u); if (s > cs){ cs = s; bc = c; } }
+    if (!bc || cs < WORD_VIG){
+      cands.push({ u, n: 1, occ: 1, last: net.life }); if (cands.length > CAND_MAX) cands.shift();
+      logWord({ k:"sentita", c:1, s:Math.round(100*Math.max(bs, cs)), ...info }); showWord("sentita 1 volta", true);
+      return;
+    }
+    // risentita: la memoria si fa più precisa (è la media delle volte che l'ha sentita)
+    bc.n++; if (net.life - bc.last > 40) bc.occ++; bc.last = net.life;
+    for (const [k, v] of bc.u) bc.u.set(k, v*(bc.n - 1)/bc.n);
+    for (const [k, v] of u) bc.u.set(k, (bc.u.get(k) || 0) + v/bc.n);
+    normalizeMap(bc.u);
+    if (bc.n < WORD_TIMES){ logWord({ k:"sentita", c:bc.n, s:Math.round(100*cs), ...info }); showWord(`sentita ${bc.n} volte`); return; }
+    // è tornata abbastanza volte: è una parola, e nasce il suo neurone
+    cands.splice(cands.indexOf(bc), 1);
+    w = newWordNeuron(bc.u, bc.occ);
     w.push = 2; net.wordsNew = (net.wordsNew || 0) + 1;
-    logWord({ k:"nuova", n:w.wn, s:Math.round(100*bs), ...info }); showWord(`n. ${w.wn} nuova`);
-    if (!net.firsts.word){ net.firsts.word = 1; addMoment("udito", "Ha sentito la prima parola: è nato il primo neurone delle parole"); }
+    logWord({ k:"nuova", n:w.wn, s:Math.round(100*cs), c:bc.n, ...info }); showWord(`n. ${w.wn} nuova`);
+    if (!net.firsts.word){ net.firsts.word = 1; addMoment("udito", "Ha imparato la prima parola: è nato il primo neurone delle parole"); }
   }
-  // la tiene a mente qualche secondo, per provare a ridirla
+  // una parola che conosce o che ha appena imparato: la tiene a mente qualche secondo, per provare a ridirla
   echo = { ev: u0.ev.slice(), fr: u0.fr, start: u0.start, end: u0.end, lastVoiced: u0.lastVoiced, u, word: w, at: net.life, tried: false };
 }
-function newWordNeuron(u){
+// il neurone di una parola: impara la media delle volte che l'ha sentita, e ogni occasione in cui l'ha sentita conta
+// come per gli altri neuroni (dopo tre occasioni diverse resta)
+function newWordNeuron(u, occ){
   makeRoom(null);
   let top = null, tv = -1; for (const [k, v] of u) if (v > tv){ tv = v; top = wid(k); }
   const par = byId.get(top), h = AREA_HOME[A_PAROLE], j = () => (Math.random()-0.5)*0.08;
   const c = makeNeuron(net, new Float32Array(N_IN), par ? par.f : 330, par ? par.id : -1, h[0] + j(), h[1] + j(), h[2] + j(), A_PAROLE);
-  c.pw = new Map(u); c.flash = 1; c.occ = 1;              // sentirla è già la prima occasione
+  c.pw = new Map(u); c.flash = 1; c.occ = occ || 1;
   c.wn = net.wordNum = (net.wordNum || 0) + 1;             // il suo numero, quello che si vede sullo schermo
   net.neurons.push(c); byId.set(c.id, c); net.births++;
   placeNewborn(c); staticDirty = true;
   rings.push({ x:c.x, y:c.y, z:c.z, t:0, kind:"birth" });
+  if (c.occ >= STABLE_AFTER){ c.stable = true; rings.push({ x:c.x, y:c.y, z:c.z, t:0, kind:"stable" }); }
   return c;
 }
 // il registro delle parole (e dei rumori scartati, e dei tentativi di ripeterle): va nel salvataggio e nel file
@@ -1205,8 +1285,9 @@ let wordShownAt = -1e9;
 function showWord(text, dim){ const e = $("wordNow"); if (!e) return; e.textContent = text; e.classList.toggle("dim", !!dim); wordShownAt = performance.now(); e.style.opacity = 1; }
 
 // ======================= la spinta a imitare =======================
-// Dopo aver sentito una parola la tiene a mente qualche secondo, come la memoria dell'orecchio, e appena tocca a lei
-// (un attimo di silenzio) prova a ridirla: i suoni della parola, uno dopo l'altro e con i loro tempi, spingono i gesti
+// Dopo aver sentito una parola che conosce, o che ha appena imparato, la tiene a mente qualche secondo, come la memoria
+// dell'orecchio, e appena tocca a lei (un attimo di silenzio) prova a ridirla. Solo le parole: una voce sentita una volta
+// sola o un rumore non li ripete (prima provava a ridire ogni suono). I suoni della parola, uno dopo l'altro e con i loro tempi, spingono i gesti
 // che sa che li producono, molto più di quanto la rete spinga di solito la voce. Un suono che non ha mai fatto lei
 // (la tua voce è più grave della sua) usa i gesti dei suoni suoi che gli somigliano, tanto più quanto gli somigliano.
 // Mentre la ridice si ascolta. Alla fine confronta ciò che ha sentito di sé con la parola, come confronta due parole:
@@ -1245,7 +1326,7 @@ function imitStep(){
   }
   if (!echo || echo.tried) return;
   if (net.life - echo.at > ECHO_KEEP){ echo = null; return; }
-  if (!voiceOn || needAir || breath < 0.35 || utt) return;   // senza fiato no; e se l'altro sta ancora parlando aspetta il suo turno
+  if (!voiceOn || needAir || breath < 0.35 || (utt && utt.on <= UTT_MAX)) return;   // senza fiato no; e se tu stai ancora parlando aspetta il suo turno
   if (net.life - echo.at < IMIT_WAIT) return;              // un attimo di silenzio prima di rispondere
   if (speaking && speakStart < echo.at) return;            // un verso suo cominciato prima: non è una risposta
   echo.tried = true;
@@ -1265,8 +1346,9 @@ function imitStep(){
 }
 // la spinta dell'imitazione sui neuroni motori, in questo passo (un attimo prima del suono, perché la bocca ci mette un po')
 function imitPush(){
-  // mentre qualcuno parla lei ascolta: non comincia a parlargli sopra (a turno, come i bambini)
-  if (utt && !speaking && !imit) for (let k=0;k<N_PITCH;k++) mIn[k] -= 0.25;
+  // mentre qualcuno le parla da vicino lei ascolta: non comincia a parlargli sopra (a turno, come i bambini).
+  // La TV, le voci lontane e i rumori non la fermano
+  if (utt && utt.on <= UTT_MAX && !speaking && !imit) for (let k=0;k<N_PITCH;k++) mIn[k] -= 0.25;
   if (!imit) return;
   const i = imit.k + IMIT.lead, g = imit.plan[i];
   if (g){
@@ -1953,7 +2035,7 @@ function serialize(){ return JSON.stringify(serializeObj()); }
 function serializeObj(){ return { ...headObj(), neurons: net.neurons.map(neuronRec) }; }
 function headObj(){
   return { v:2, saved:Date.now(), life:net.life, births:net.births, prunes:net.prunes, merges:net.merges || 0, babbles:net.babbles, replies:net.replies,
-    wordsNew:net.wordsNew || 0, wordsKnown:net.wordsKnown || 0, wordNum:net.wordNum || 0, imitations:net.imitations || 0, imitGood:net.imitGood || 0,
+    wordsNew:net.wordsNew || 0, wordsKnown:net.wordsKnown || 0, wordsHeard:net.wordsHeard || 0, farVoices:net.farVoices || 0, noiseHeard:net.noiseHeard || 0, wordNum:net.wordNum || 0, imitations:net.imitations || 0, imitGood:net.imitGood || 0,
     wordLog:net.wordLog || [], nextId:net.nextId,
     firsts: net.firsts, bornAt: net.bornAt,
     voice: { voglia:r3(net.voice.voglia), prog:r3(net.voice.prog), F1:packF(net.voice.F1), F2:packF(net.voice.F2), G1:packF(net.voice.G1), G2:packF(net.voice.G2),
@@ -2007,7 +2089,7 @@ function deserialize(text){
   const d = JSON.parse(text);
   if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.neurons) || !d.neurons.length) throw new Error("file non valido");
   const n = { life:d.life|0, births:d.births|0, prunes:d.prunes|0, merges:d.merges|0, babbles:d.babbles|0, replies:d.replies|0,
-              wordsNew:d.wordsNew|0, wordsKnown:d.wordsKnown|0, wordNum:d.wordNum|0, imitations:d.imitations|0, imitGood:d.imitGood|0,
+              wordsNew:d.wordsNew|0, wordsKnown:d.wordsKnown|0, wordsHeard:d.wordsHeard|0, farVoices:d.farVoices|0, noiseHeard:d.noiseHeard|0, wordNum:d.wordNum|0, imitations:d.imitations|0, imitGood:d.imitGood|0,
               wordLog: Array.isArray(d.wordLog) ? d.wordLog.slice(-WORDLOG_MAX) : [], nextId:d.nextId|0, neurons:[], voice:newVoiceMind(),
               firsts: (d.firsts && typeof d.firsts === "object") ? d.firsts : null, bornAt: +d.bornAt || null };
   if (d.voice && d.voice.F1){
@@ -2117,7 +2199,7 @@ function saveSlice(budget){
   idbPut(data).then(() => { if (!saveJob) savedState(data.length); }).catch(() => {});
 }
 function saveSync(){ try { const d = serialize(); if (d.length < 4e6) localStorage.setItem(LS_KEY, d); } catch(e) {} }
-function adopt(n){ utt = null; echo = null; imit = null; saveJob = null; rawH.fill(0); needAir = false; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
+function adopt(n){ utt = far = null; preQ.length = 0; cands = []; ambDb = null; farFrom = 0; echo = null; imit = null; saveJob = null; rawH.fill(0); needAir = false; net = n; flights = []; pending = []; traced = []; settle = 0; imitCheck = null; runV = runC = 0; accVo = accSr = accN = 0; reindex(); relaxLayout(net.neurons.length > 600 ? 60 : 150); ep = { on:false, cur:null }; reindex(); updateStats(); }
 async function load(){
   let a = null, b = null;
   try { const t = await idbGet(); if (t) a = deserialize(t); } catch(e) {}
@@ -2401,7 +2483,7 @@ async function wake(){
 async function sleep(){
   if (!running) return;
   running = false; clearInterval(timer);
-  speaking = false; hushVoice(); utt = null; echo = null; imit = null;
+  speaking = false; hushVoice(); utt = far = null; preQ.length = 0; echo = null; imit = null;
   stopCamera(); stopMic();
   try { if (wakeLock) await wakeLock.release(); } catch(e) {}
   relaxLayout(net.neurons.length > 600 ? 80 : 200);     // dormendo si riorganizza
