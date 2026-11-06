@@ -352,7 +352,7 @@ button.main{background:var(--accent);color:#1a1400;border-color:var(--accent);fo
 <script>
 "use strict";
 // ======================= parametri =======================
-const VERSIONE = 30;              // la versione dell'app (la stessa della memoria del service worker)
+const VERSIONE = 31;              // la versione dell'app (la stessa della memoria del service worker)
 // vista, bande dell'udito, altezza, sagoma del suono, attacchi.
 // Gli attacchi sono come le cellule d'attacco dell'orecchio: si accendono quando in una banda il suono cresce di colpo
 // (lo scoppio di una «p», il fruscio di una «c», una vocale che comincia) e tacciono finché un suono resta uguale.
@@ -682,10 +682,14 @@ function hearBands(fq){
 function balanceSenses(){
   // la sagoma del suono (la vocale) pesa molto più della nota: come per i bambini, conta cosa si dice, non su che nota.
   // Così la stessa vocale detta da te intorno ai 100 Hz o da lei a 200 accende gli stessi neuroni (prima la nota pesava
-  // quanto la vocale, e una «a» su due note diverse era lontana quanto due vocali diverse sulla stessa nota)
+  // quanto la vocale, e una «a» su due note diverse era lontana quanto due vocali diverse sulla stessa nota).
+  // Quando c'è, la sagoma ha sempre il suo peso pieno (1,5); le altre parti al massimo il loro. Prima anche la sagoma
+  // aveva solo un tetto: una voce vera arriva al microfono del telefono con le vocali poco marcate, la sagoma restava
+  // debole e vinceva la nota. Nelle reti vere i neuroni della tua voce si dividevano per nota (103, 117, 133, 151 Hz)
+  // invece che per vocale, e tutte le tue parole sembravano la stessa
   for (const [a, b, on, len] of [[0, OFF_A, 0.3, 1], [OFF_A, OFF_P, 0.25, 1], [OFF_P, OFF_S, 0.2, 0.35], [OFF_S, OFF_O, 0.05, 1.5], [OFF_O, END_U1, 0.1, 1]]){
     let s = 0; for (let i=a;i<b;i++) s += x[i]*x[i]; s = Math.sqrt(s);
-    const k = s > on ? Math.min(len, s) / s : 0;   // attivo: lunghezza fino a 1 (1,5 per la sagoma); troppo debole: zero
+    const k = s > on ? (a === OFF_S ? len : Math.min(len, s)) / s : 0;   // attivo: la sagoma sempre 1,5, le altre fino a 1 (la nota 0,35); troppo debole: zero
     for (let i=a;i<b;i++) x[i] *= k;
   }
 }
